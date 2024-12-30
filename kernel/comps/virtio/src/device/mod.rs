@@ -9,6 +9,7 @@ pub mod console;
 pub mod input;
 pub mod network;
 pub mod socket;
+pub mod filesystem;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromInt)]
 #[repr(u8)]
@@ -36,6 +37,8 @@ pub enum VirtioDeviceType {
     Pstore = 22,
     IOMMU = 23,
     Memory = 24,
+    Sound = 25,
+    Filesystem = 26,
 }
 
 #[derive(Debug)]

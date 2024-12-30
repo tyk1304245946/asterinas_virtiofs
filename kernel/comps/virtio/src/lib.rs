@@ -18,6 +18,7 @@ use component::{init_component, ComponentInitError};
 use device::{
     block::device::BlockDevice,
     console::device::ConsoleDevice,
+    filesystem::device::FilesystemDevice,
     input::device::InputDevice,
     network::device::NetworkDevice,
     socket::{self, device::SocketDevice},
@@ -69,6 +70,7 @@ fn virtio_component_init() -> Result<(), ComponentInitError> {
             VirtioDeviceType::Network => NetworkDevice::init(transport),
             VirtioDeviceType::Console => ConsoleDevice::init(transport),
             VirtioDeviceType::Socket => SocketDevice::init(transport),
+            VirtioDeviceType::Filesystem => FilesystemDevice::init(transport),
             _ => {
                 warn!("[Virtio]: Found unimplemented device:{:?}", device_type);
                 Ok(())
@@ -104,6 +106,9 @@ fn negotiate_features(transport: &mut Box<dyn VirtioTransport>) {
         VirtioDeviceType::Input => InputDevice::negotiate_features(device_specified_features),
         VirtioDeviceType::Console => ConsoleDevice::negotiate_features(device_specified_features),
         VirtioDeviceType::Socket => SocketDevice::negotiate_features(device_specified_features),
+        VirtioDeviceType::Filesystem => {
+            FilesystemDevice::negotiate_features(device_specified_features)
+        }
         _ => device_specified_features,
     };
     let mut support_feature = Feature::from_bits_truncate(features);
