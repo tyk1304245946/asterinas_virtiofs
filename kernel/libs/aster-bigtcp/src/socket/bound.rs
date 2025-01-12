@@ -23,7 +23,10 @@ use super::{
     RawTcpSocket, RawUdpSocket, TcpStateCheck,
 };
 use crate::{
-    errors::tcp::{ConnectError, ListenError},
+    errors::{
+        tcp::{ConnectError, ListenError},
+        udp::SendError,
+    },
     ext::Ext,
     iface::{BindPortConfig, BoundPort, Iface},
     socket_table::{ConnectionKey, ListenerKey},
@@ -31,7 +34,7 @@ use crate::{
 
 pub struct Socket<T: Inner<E>, E: Ext>(Takeable<Arc<SocketBg<T, E>>>);
 
-/// [`TcpConnectionInner`] or [`UdpSocketInner`].
+/// [`TcpConnectionInner`], [`TcpListenerInner`], or [`UdpSocketInner`].
 pub trait Inner<E: Ext> {
     type Observer: SocketEventObserver;
 
@@ -59,7 +62,7 @@ pub struct SocketBg<T: Inner<E>, E: Ext> {
     next_poll_at_ms: AtomicU64,
 }
 
-/// States needed by [`TcpConnectionBg`] but not [`UdpSocketBg`].
+/// States needed by [`TcpConnectionBg`].
 pub struct TcpConnectionInner<E: Ext> {
     socket: SpinLock<RawTcpSocketExt<E>, LocalIrqDisabled>,
     is_dead: AtomicBool,
@@ -119,7 +122,10 @@ impl<E: Ext> RawTcpSocketExt<E> {
     /// call this method after handling non-closing user events, because the socket can never be
     /// dead if it is not closed.
     fn update_dead(&self, this: &Arc<TcpConnectionBg<E>>) {
-        if self.state() == smoltcp::socket::tcp::State::Closed {
+        // FIXME: This is a temporary workaround to mark TimeWait socket as dead.
+        if self.state() == smoltcp::socket::tcp::State::Closed
+            || self.state() == smoltcp::socket::tcp::State::TimeWait
+        {
             this.inner.is_dead.store(true, Ordering::Relaxed);
         }
 
@@ -204,6 +210,7 @@ pub struct TcpBacklog<E: Ext> {
     connected: Vec<TcpConnection<E>>,
 }
 
+/// States needed by [`TcpListenerBg`].
 pub struct TcpListenerInner<E: Ext> {
     backlog: SpinLock<TcpBacklog<E>, LocalIrqDisabled>,
     listener_key: ListenerKey,
@@ -242,7 +249,7 @@ impl<E: Ext> Inner<E> for TcpListenerInner<E> {
     }
 }
 
-/// States needed by [`UdpSocketBg`] but not [`TcpConnectionBg`].
+/// States needed by [`UdpSocketBg`].
 type UdpSocketInner = SpinLock<Box<RawUdpSocket>, LocalIrqDisabled>;
 
 impl<E: Ext> Inner<E> for UdpSocketInner {
@@ -631,14 +638,10 @@ impl<E: Ext> UdpSocket<E> {
         size: usize,
         meta: impl Into<UdpMetadata>,
         f: F,
-    ) -> Result<R, crate::errors::udp::SendError>
+    ) -> Result<R, SendError>
     where
         F: FnOnce(&mut [u8]) -> R,
     {
-        use smoltcp::socket::udp::SendError as SendErrorInner;
-
-        use crate::errors::udp::SendError;
-
         let mut socket = self.0.inner.lock();
 
         if size > socket.packet_send_capacity() {
@@ -647,8 +650,7 @@ impl<E: Ext> UdpSocket<E> {
 
         let buffer = match socket.send(size, meta) {
             Ok(data) => data,
-            Err(SendErrorInner::Unaddressable) => return Err(SendError::Unaddressable),
-            Err(SendErrorInner::BufferFull) => return Err(SendError::BufferFull),
+            Err(err) => return Err(err.into()),
         };
         let result = f(buffer);
         self.0.update_next_poll_at_ms(PollAt::Now);
