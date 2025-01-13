@@ -3,13 +3,19 @@
 use alloc::{vec, vec::Vec};
 use core::fmt::Debug;
 
-use ostd::Pod;
+use ostd::{
+    early_print,
+    mm::{VmReader, VmWriter},
+    Pod,
+};
 
 use super::fuse::*;
 
 pub trait AnyFuseDevice {
     // Send Init Request to Device.
     fn init(&self);
+    fn readdir(&self, nodeid: u64, fh: u64, offset: u64, size: u32);
+    fn opendir(&self, nodeid: u64, flags: u32);
 }
 
 #[derive(Debug)]
@@ -40,13 +46,49 @@ impl VirtioFsReq {
 
         concat_req
     }
+}
 
-    // pub fn from_bytes(bytes: &[u8]) -> Self{
-    //     let mut base_idx = 0;
-    //     let headerin_len = size_of::<FuseInHeader>();
-    //     let headerin = FuseInHeader::from_bytes(&bytes[base_idx..base_idx + headerin_len]);
-    //     base_idx += headerin_len;
-    //     let data_in_len = headerin.len as usize - headerin_len;
-    //     let
-    // }
+///FuseDirent with the file name
+pub struct FuseDirentWithName {
+    pub dirent: FuseDirent,
+    pub name: Vec<u8>,
+}
+///Contain all directory entries for one directory
+pub struct FuseReaddirOut {
+    pub dirents: Vec<FuseDirentWithName>,
+}
+impl FuseReaddirOut {
+    /// Read all directory entries from the buffer
+    pub fn read_dirent(
+        reader: &mut VmReader<'_, ostd::mm::Infallible>,
+        out_header: FuseOutHeader,
+    ) -> FuseReaddirOut {
+        let mut len = out_header.len as i32 - size_of::<FuseOutHeader>() as i32;
+        let mut dirents: Vec<FuseDirentWithName> = Vec::new();
+        // For paddings between dirents
+        let mut padding: Vec<u8> = vec![0 as u8; 8];
+        while len > 0 {
+            let dirent = reader.read_val::<FuseDirent>().unwrap();
+            let mut file_name: Vec<u8>;
+
+            file_name = vec![0 as u8; dirent.namelen as usize];
+            let mut writer = VmWriter::from(file_name.as_mut_slice());
+            writer.write(reader);
+            let pad_len = (8 - (dirent.namelen & 0x7)) & 0x7; // pad to multiple of 8 bytes
+            let mut pad_writer = VmWriter::from(&mut padding[0..pad_len as usize]);
+            pad_writer.write(reader);
+            dirents.push(FuseDirentWithName {
+                dirent: dirent,
+                name: file_name,
+            });
+            early_print!(
+                "len: {:?} ,dirlen: {:?}, name_len: {:?}\n",
+                len,
+                size_of::<FuseDirent>() as u32 + dirent.namelen,
+                dirent.namelen
+            );
+            len -= size_of::<FuseDirent>() as i32 + dirent.namelen as i32 + pad_len as i32;
+        }
+        FuseReaddirOut { dirents: dirents }
+    }
 }

@@ -691,27 +691,23 @@ impl TryFrom<u32> for FuseOpcode {
             36 => Ok(FuseOpcode::FuseInterrupt),
             37 => Ok(FuseOpcode::FuseBmap),
             38 => Ok(FuseOpcode::FuseDestroy),
-            #[cfg(feature = "abi-7-11")]
             39 => Ok(FuseOpcode::FuseIoctl),
-            #[cfg(feature = "abi-7-11")]
             40 => Ok(FuseOpcode::FusePoll),
-            #[cfg(feature = "abi-7-15")]
             41 => Ok(FuseOpcode::FuseNotifyReply),
-            #[cfg(feature = "abi-7-16")]
             42 => Ok(FuseOpcode::FuseBatchForget),
-            #[cfg(feature = "abi-7-19")]
             43 => Ok(FuseOpcode::FuseFallocate),
-
-            #[cfg(target_os = "macos")]
-            61 => Ok(FuseOpcode::FuseSetvolname),
-            #[cfg(target_os = "macos")]
-            62 => Ok(FuseOpcode::FuseGetxtimes),
-            #[cfg(target_os = "macos")]
-            63 => Ok(FuseOpcode::FuseExchange),
-
-            #[cfg(feature = "abi-7-12")]
+            44 => Ok(FuseOpcode::FuseReaddirplus),
+            45 => Ok(FuseOpcode::FuseRename2),
+            46 => Ok(FuseOpcode::FuseLseek),
+            47 => Ok(FuseOpcode::FuseCopyFileRange),
+            48 => Ok(FuseOpcode::FuseSetupmapping),
+            49 => Ok(FuseOpcode::FuseRemovemapping),
+            50 => Ok(FuseOpcode::FuseSyncfs),
+            51 => Ok(FuseOpcode::FuseTmpfile),
+            52 => Ok(FuseOpcode::FuseStatx),
             4096 => Ok(FuseOpcode::CuseInit),
-
+            1048576 => Ok(FuseOpcode::CuseInitBswapReserved),
+            436207616 => Ok(FuseOpcode::FuseInitBswapReserved),
             _ => Err(InvalidOpcodeError),
         }
     }

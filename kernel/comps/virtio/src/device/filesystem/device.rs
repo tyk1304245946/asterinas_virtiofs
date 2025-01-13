@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
 use core::fmt::Debug;
 
 use log::debug;
 use ostd::{
     early_print, early_println,
     mm::{DmaDirection, DmaStream, DmaStreamSlice, FrameAllocOptions, VmReader},
-    sync::SpinLock,
+    sync::{RwLock, SpinLock},
     trap::TrapFrame,
     Pod,
 };
@@ -15,7 +15,7 @@ use ostd::{
 use super::{
     config::{FilesystemFeatures, VirtioFilesystemConfig},
     fuse::*,
-    request::AnyFuseDevice,
+    request::{AnyFuseDevice, FuseReaddirOut},
 };
 use crate::{
     device::VirtioDeviceError,
@@ -29,18 +29,17 @@ pub struct FilesystemDevice {
 
     hiprio_queue: SpinLock<VirtQueue>,
     request_queues: Vec<SpinLock<VirtQueue>>,
-    notify_queue: SpinLock<VirtQueue>,
-
+    // notify_queue: SpinLock<VirtQueue>,
     hiprio_buffer: DmaStream,
     request_buffers: Vec<DmaStream>,
-    notify_buffer: DmaStream,
+    // notify_buffer: DmaStream,
     // callbacks: RwLock<Vec<&'static FilesystemCallback>, LocalIrqDisabled>,
 }
 
 impl AnyFuseDevice for FilesystemDevice {
     fn init(&self) {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
-        // let request_buffer = device.request_buffers[0].clone();
+
         let headerin = FuseInHeader {
             len: (size_of::<FuseInitIn>() as u32 + size_of::<FuseInHeader>() as u32),
             opcode: FuseOpcode::FuseInit as u32,
@@ -52,6 +51,7 @@ impl AnyFuseDevice for FilesystemDevice {
             total_extlen: 0,
             padding: 0,
         };
+
         let initin = FuseInitIn {
             major: FUSE_KERNEL_VERSION,
             minor: FUSE_KERNEL_MINOR_VERSION,
@@ -60,6 +60,7 @@ impl AnyFuseDevice for FilesystemDevice {
             flags2: 0,
             unused: [0u32; 11],
         };
+
         let headerin_bytes = headerin.as_bytes();
         let initin_bytes = initin.as_bytes();
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
@@ -71,41 +72,135 @@ impl AnyFuseDevice for FilesystemDevice {
             &initout_bytes,
         ]
         .concat();
-        // Send msg
+
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
         let len = writer.write(&mut reader);
         let len_in = size_of::<FuseInitIn>() + size_of::<FuseInHeader>();
+
         self.request_buffers[0].sync(0..len).unwrap();
         let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
         let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
         request_queue
             .add_dma_buf(&[&slice_in], &[&slice_out])
             .unwrap();
+
+        if request_queue.should_notify() {
+            request_queue.notify();
+        }
+    }
+
+    fn opendir(&self, nodeid: u64, flags: u32) {
+        let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+        let headerin = FuseInHeader {
+            len: (size_of::<FuseOpenIn>() as u32 + size_of::<FuseInHeader>() as u32),
+            opcode: FuseOpcode::FuseOpendir as u32,
+            unique: 0,
+            nodeid: nodeid,
+            uid: 0,
+            gid: 0,
+            pid: 0,
+            total_extlen: 0,
+            padding: 0,
+        };
+
+        let openin = FuseOpenIn {
+            flags: flags,
+            open_flags: 0,
+        };
+
+        let headerin_bytes = headerin.as_bytes();
+        let openin_bytes = openin.as_bytes();
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        let openout_bytes = [0u8; size_of::<FuseOpenOut>()];
+        let concat_req = [
+            headerin_bytes,
+            openin_bytes,
+            &headerout_buffer,
+            &openout_bytes,
+        ]
+        .concat();
+
+        let mut reader = VmReader::from(concat_req.as_slice());
+        let mut writer = self.request_buffers[0].writer().unwrap();
+        let len = writer.write(&mut reader);
+        let len_in = size_of::<FuseOpenIn>() + size_of::<FuseInHeader>();
+
+        self.request_buffers[0].sync(0..len).unwrap();
+        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+        request_queue
+            .add_dma_buf(&[&slice_in], &[&slice_out])
+            .unwrap();
+
+        if request_queue.should_notify() {
+            request_queue.notify();
+        }
+    }
+
+    fn readdir(&self, nodeid: u64, fh: u64, offset: u64, size: u32) {
+        let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+        let headerin = FuseInHeader {
+            len: (size_of::<FuseReadIn>() as u32 + size_of::<FuseInHeader>() as u32),
+            opcode: FuseOpcode::FuseReaddir as u32,
+            unique: 0,
+            nodeid: nodeid,
+            uid: 0,
+            gid: 0,
+            pid: 0,
+            total_extlen: 0,
+            padding: 0,
+        };
+
+        let readin = FuseReadIn {
+            fh: fh,
+            offset: offset,
+            size: size,
+            read_flags: 0,
+            lock_owner: 0,
+            flags: 0,
+            padding: 0,
+        };
+
+        let headerin_bytes = headerin.as_bytes();
+        let readin_bytes = readin.as_bytes();
+        // let readin_bytes = [0u8; 36];
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        let readout_bytes = [0u8; 1024];
+        let concat_req = [
+            headerin_bytes,
+            &readin_bytes,
+            &headerout_buffer,
+            &readout_bytes,
+        ]
+        .concat();
+
+        let mut reader = VmReader::from(concat_req.as_slice());
+        let mut writer = self.request_buffers[0].writer().unwrap();
+        let len = writer.write(&mut reader);
+        let len_in = size_of::<FuseReadIn>() + size_of::<FuseInHeader>();
+
+        self.request_buffers[0].sync(0..len).unwrap();
+        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+        request_queue
+            .add_dma_buf(&[&slice_in], &[&slice_out])
+            .unwrap();
+
         if request_queue.should_notify() {
             request_queue.notify();
         }
     }
 }
 
-impl Debug for FilesystemDevice {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("FilesystemDevice")
-            .field("config_manager", &self.config_manager)
-            .field("transport", &self.transport)
-            .field("hiprio_queue", &self.hiprio_queue)
-            .field("request_queues", &self.request_queues)
-            .field("notify_queue", &self.notify_queue)
-            .field("hiprio_buffer", &self.hiprio_buffer)
-            .field("request_buffers", &self.request_buffers)
-            .field("notify_buffer", &self.notify_buffer)
-            .finish()
-    }
-}
-
 impl FilesystemDevice {
     /// Negotiate features for the device specified bits 0~23
-    pub(crate) fn negotiate_features(features: u64) -> u64 {
+    pub fn negotiate_features(features: u64) -> u64 {
         let device_features = FilesystemFeatures::from_bits_truncate(features);
         let supported_features = FilesystemFeatures::supported_features();
         let filesystem_features = device_features & supported_features;
@@ -114,40 +209,41 @@ impl FilesystemDevice {
     }
 
     pub fn init(mut transport: Box<dyn VirtioTransport>) -> Result<(), VirtioDeviceError> {
-        let config_manager = VirtioFilesystemConfig::new_manager(&*transport);
-
-        let fs_config = config_manager.read_config();
-        early_println!("virtio_fs_config = {:?}", fs_config);
-        debug!("virtio_fs_config = {:?}", fs_config);
+        let config_manager = VirtioFilesystemConfig::new_manager(transport.as_ref());
+        let fs_config: VirtioFilesystemConfig = config_manager.read_config();
+        early_print!(
+            "virtio_filesystem_config_notify_buf_size = {:?}\n",
+            fs_config.notify_buf_size
+        );
+        early_print!(
+            "virtio_filesystem_config_num_request_queues = {:?}\n",
+            fs_config.num_request_queues
+        );
+        early_print!("virtio_filesystem_config_tag = {:?}\n", fs_config.tag);
 
         const HIPRIO_QUEUE_INDEX: u16 = 0;
-        const NOTIFICATION_QUEUE_INDEX: u16 = 1;
+        // const NOTIFICATION_QUEUE_INDEX: u16 = 1;
         const REQUEST_QUEUE_BASE_INDEX: u16 = 1;
-
         let hiprio_queue =
             SpinLock::new(VirtQueue::new(HIPRIO_QUEUE_INDEX, 2, transport.as_mut()).unwrap());
-        let notify_queue =
-            SpinLock::new(VirtQueue::new(NOTIFICATION_QUEUE_INDEX, 2, transport.as_mut()).unwrap());
+        // let notification_queue= SpinLock::new(VirtQueue::new(NOTIFICATION_QUEUE_INDEX, 2, transport.as_mut()).unwrap());
         let mut request_queues = Vec::new();
         for i in 0..fs_config.num_request_queues {
             request_queues.push(SpinLock::new(
-                VirtQueue::new(REQUEST_QUEUE_BASE_INDEX + (i as u16), 2, transport.as_mut())
+                VirtQueue::new(REQUEST_QUEUE_BASE_INDEX + (i as u16), 4, transport.as_mut())
                     .unwrap(),
             ))
         }
 
         let hiprio_buffer = {
-            let segment = FrameAllocOptions::new().alloc_segment(1).unwrap();
-            DmaStream::map(segment.into(), DmaDirection::ToDevice, false).unwrap()
+            let vm_segment = FrameAllocOptions::new().alloc_segment(3).unwrap();
+            DmaStream::map(vm_segment.into(), DmaDirection::Bidirectional, false).unwrap()
         };
-        let notify_buffer = {
-            let segment = FrameAllocOptions::new().alloc_segment(1).unwrap();
-            DmaStream::map(segment.into(), DmaDirection::ToDevice, false).unwrap()
-        };
+
         let mut request_buffers = Vec::new();
         for _ in 0..fs_config.num_request_queues {
             let request_buffer = {
-                let vm_segment = FrameAllocOptions::new().alloc_segment(1).unwrap();
+                let vm_segment = FrameAllocOptions::new().alloc_segment(3).unwrap();
                 DmaStream::map(vm_segment.into(), DmaDirection::Bidirectional, false).unwrap()
             };
             request_buffers.push(request_buffer);
@@ -157,22 +253,23 @@ impl FilesystemDevice {
             config_manager: config_manager,
             transport: SpinLock::new(transport),
             hiprio_queue: hiprio_queue,
-            notify_queue: notify_queue,
+            // notification_queue: notification_queue,
             request_queues: request_queues,
             hiprio_buffer: hiprio_buffer,
-            notify_buffer: notify_buffer,
             request_buffers: request_buffers,
         });
-
-        let handle_reqest = {
+        let handle_request = {
             let device = device.clone();
             move |_: &TrapFrame| device.handle_recv_irq()
         };
-
         let config_space_change = |_: &TrapFrame| early_print!("Config Changed\n");
         let mut transport = device.transport.disable_irq().lock();
         transport
-            .register_queue_callback(REQUEST_QUEUE_BASE_INDEX + 0, Box::new(handle_reqest), false)
+            .register_queue_callback(
+                REQUEST_QUEUE_BASE_INDEX + 0,
+                Box::new(handle_request),
+                false,
+            )
             .unwrap();
         transport
             .register_cfg_callback(Box::new(config_space_change))
@@ -180,9 +277,8 @@ impl FilesystemDevice {
         transport.finish_init();
         drop(transport);
 
-        device.init();
-
-        // test_device(device);
+        // device.init();
+        test_device(&device);
 
         Ok(())
     }
@@ -193,77 +289,66 @@ impl FilesystemDevice {
             return;
         };
         self.request_buffers[0].sync(0..len as usize).unwrap();
-
         let mut reader = self.request_buffers[0].reader().unwrap();
         let headerin = reader.read_val::<FuseInHeader>().unwrap();
-        let datain = reader.read_val::<FuseInitIn>().unwrap();
-        let headerout = reader.read_val::<FuseOutHeader>().unwrap();
-        let dataout = reader.read_val::<FuseInitOut>().unwrap();
 
         match FuseOpcode::try_from(headerin.opcode).unwrap() {
             FuseOpcode::FuseInit => {
+                let _datain = reader.read_val::<FuseInitIn>().unwrap();
+                let _headerout = reader.read_val::<FuseOutHeader>().unwrap();
                 let dataout = reader.read_val::<FuseInitOut>().unwrap();
                 early_print!("Received Init Msg\n");
                 early_print!("major:{:?}\n", dataout.major);
                 early_print!("minor:{:?}\n", dataout.minor);
                 early_print!("flags:{:?}\n", dataout.flags);
             }
+            FuseOpcode::FuseReaddir => {
+                // 这里的datain千万不要注释，注释掉会出bug！！！！
+                let _datain = reader.read_val::<FuseReadIn>().unwrap();
+                let headerout = reader.read_val::<FuseOutHeader>().unwrap();
+                let readdir_out = FuseReaddirOut::read_dirent(&mut reader, headerout);
+
+                early_print!(
+                    "Readdir response received: len = {:?}, error = {:?}\n",
+                    headerout.len,
+                    headerout.error
+                );
+                for dirent_name in readdir_out.dirents {
+                    let dirent = dirent_name.dirent;
+                    let name = String::from_utf8(dirent_name.name).unwrap();
+                    early_print!("Readdir response received: inode={:?}, off={:?}, namelen={:?}, type:{:?}, filename={:?}\n", 
+                        dirent.ino, dirent.off, dirent.namelen, dirent.type_, name);
+                }
+            }
+            FuseOpcode::FuseOpendir => {
+                let _datain = reader.read_val::<FuseOpenIn>().unwrap();
+                let headerout = reader.read_val::<FuseOutHeader>().unwrap();
+                let dataout = reader.read_val::<FuseOpenOut>().unwrap();
+                early_print!(
+                    "Readdir response received: len = {:?}, error = {:?}\n",
+                    headerout.len,
+                    headerout.error
+                );
+                early_print!("fh:{:?}\n", dataout.fh);
+                early_print!("open_flags:{:?}\n", dataout.open_flags);
+                early_print!("backing_id:{:?}\n", dataout.backing_id);
+            }
             _ => {}
         }
-
-        // early_print!("Received Msg:\n");
-        // early_print!("headerin:{:?}\n", headerin);
-        // early_print!("datain:{:?}\n", datain);
-        // early_print!("headerout:{:?}\n", headerout);
-        // early_print!("dataout:{:?}\n", dataout);
+        drop(request_queue);
+        test_device(&self);
     }
 }
 
-// fn test_device(device: Arc<FilesystemDevice>) {
-//     let mut request_queue = device.request_queues[0].disable_irq().lock();
-//     // let request_buffer = device.request_buffers[0].clone();
-//     let headerin = FuseInHeader {
-//         len: (size_of::<FuseInitIn>() as u32 + size_of::<FuseInHeader>() as u32),
-//         opcode: FuseOpcode::FuseInit as u32,
-//         unique: 0,
-//         nodeid: 0,
-//         uid: 0,
-//         gid: 0,
-//         pid: 0,
-//         total_extlen: 0,
-//         padding: 0,
-//     };
-//     let initin = FuseInitIn {
-//         major: FUSE_KERNEL_VERSION,
-//         minor: FUSE_KERNEL_MINOR_VERSION,
-//         max_readahead: 0,
-//         flags: FuseInitFlags::FUSE_INIT_EXT.bits() as u32,
-//         flags2: 0,
-//         unused: [0u32; 11],
-//     };
-//     let headerin_bytes = headerin.as_bytes();
-//     let initin_bytes = initin.as_bytes();
-//     let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
-//     let initout_bytes = [0u8; 256];
-//     let concat_req = [
-//         headerin_bytes,
-//         initin_bytes,
-//         &headerout_buffer,
-//         &initout_bytes,
-//     ]
-//     .concat();
-//     // Send msg
-//     let mut reader = VmReader::from(concat_req.as_slice());
-//     let mut writer = device.request_buffers[0].writer().unwrap();
-//     let len = writer.write(&mut reader);
-//     let len_in = size_of::<FuseInitIn>() + size_of::<FuseInHeader>();
-//     device.request_buffers[0].sync(0..len).unwrap();
-//     let slice_in = DmaStreamSlice::new(&device.request_buffers[0], 0, len_in);
-//     let slice_out = DmaStreamSlice::new(&device.request_buffers[0], len_in, len);
-//     request_queue
-//         .add_dma_buf(&[&slice_in], &[&slice_out])
-//         .unwrap();
-//     if request_queue.should_notify() {
-//         request_queue.notify();
-//     }
-// }
+static TEST_COUNTER: RwLock<u32> = RwLock::new(0);
+pub fn test_device(device: &FilesystemDevice) {
+    let mut test_counter = TEST_COUNTER.write();
+    *test_counter += 1;
+    drop(test_counter);
+    let test_counter = TEST_COUNTER.read();
+    match *test_counter {
+        1 => device.opendir(1, 0),
+        2 => device.readdir(1, 0, 0, 128),
+        _ => (),
+    };
+}
