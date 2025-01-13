@@ -373,39 +373,39 @@ pub struct InvalidNotifyCodeError;
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
 #[allow(non_camel_case_types)]
-pub enum fuse_notify_code {
+pub enum FuseNotifyCode {
     #[cfg(feature = "abi-7-11")]
-    FUSE_POLL = 1,
+    FusePoll = 1,
     #[cfg(feature = "abi-7-12")]
-    FUSE_NOTIFY_INVAL_INODE = 2,
+    FuseNotifyInvalInode = 2,
     #[cfg(feature = "abi-7-12")]
-    FUSE_NOTIFY_INVAL_ENTRY = 3,
+    FuseNotifyInvalEntry = 3,
     #[cfg(feature = "abi-7-15")]
-    FUSE_NOTIFY_STORE = 4,
+    FuseNotifyStore = 4,
     #[cfg(feature = "abi-7-15")]
-    FUSE_NOTIFY_RETRIEVE = 5,
+    FuseNotifyRetrieve = 5,
     #[cfg(feature = "abi-7-18")]
-    FUSE_NOTIFY_DELETE = 6,
+    FuseNotifyDelete = 6,
 }
 
 #[cfg(feature = "abi-7-11")]
-impl TryFrom<u32> for fuse_notify_code {
+impl TryFrom<u32> for FuseNotifyCode {
     type Error = InvalidNotifyCodeError;
 
     fn try_from(n: u32) -> Result<Self, Self::Error> {
         match n {
             #[cfg(feature = "abi-7-11")]
-            1 => Ok(fuse_notify_code::FUSE_POLL),
+            1 => Ok(FuseNotifyCode::FusePoll),
             #[cfg(feature = "abi-7-12")]
-            2 => Ok(fuse_notify_code::FUSE_NOTIFY_INVAL_INODE),
+            2 => Ok(FuseNotifyCode::FuseNotifyInvalInode),
             #[cfg(feature = "abi-7-12")]
-            3 => Ok(fuse_notify_code::FUSE_NOTIFY_INVAL_ENTRY),
+            3 => Ok(FuseNotifyCode::FuseNotifyInvalEntry),
             #[cfg(feature = "abi-7-15")]
-            4 => Ok(fuse_notify_code::FUSE_NOTIFY_STORE),
+            4 => Ok(FuseNotifyCode::FuseNotifyStore),
             #[cfg(feature = "abi-7-15")]
-            5 => Ok(fuse_notify_code::FUSE_NOTIFY_RETRIEVE),
+            5 => Ok(FuseNotifyCode::FuseNotifyRetrieve),
             #[cfg(feature = "abi-7-18")]
-            6 => Ok(fuse_notify_code::FUSE_NOTIFY_DELETE),
+            6 => Ok(FuseNotifyCode::FuseNotifyDelete),
 
             _ => Err(InvalidNotifyCodeError),
         }
@@ -433,7 +433,7 @@ pub struct FuseForgetIn {
 #[cfg(feature = "abi-7-16")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_forget_one {
+pub struct FuseForgetOne {
     pub nodeid: u64,
     pub nlookup: u64,
 }
@@ -441,7 +441,7 @@ pub struct fuse_forget_one {
 #[cfg(feature = "abi-7-16")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_batch_forget_in {
+pub struct FuseBatchForgetIn {
     pub count: u32,
     pub dummy: u32,
 }
@@ -449,7 +449,7 @@ pub struct fuse_batch_forget_in {
 #[cfg(feature = "abi-7-9")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_getattr_in {
+pub struct FuseGetattrIn {
     pub getattr_flags: u32,
     pub dummy: u32,
     pub fh: u64,
@@ -467,7 +467,7 @@ pub struct FuseAttrOut {
 #[cfg(target_os = "macos")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_getxtimes_out {
+pub struct FuseGetxtimesOut {
     pub bkuptime: u64,
     pub crtime: u64,
     pub bkuptimensec: u32,
@@ -497,14 +497,14 @@ pub struct FuseMkdirIn {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_rename_in {
+pub struct FuseRenameIn {
     pub newdir: u64,
 }
 
 #[cfg(target_os = "macos")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_exchange_in {
+pub struct FuseExchangeIn {
     pub olddir: u64,
     pub newdir: u64,
     pub options: u64,
@@ -512,7 +512,7 @@ pub struct fuse_exchange_in {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_link_in {
+pub struct FuseLinkIn {
     pub oldnodeid: u64,
 }
 
@@ -732,7 +732,7 @@ pub struct FuseInitOut {
 #[cfg(feature = "abi-7-12")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct cuse_init_in {
+pub struct CuseInitIn {
     pub major: u32,
     pub minor: u32,
     pub unused: u32,
@@ -742,7 +742,7 @@ pub struct cuse_init_in {
 #[cfg(feature = "abi-7-12")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct cuse_init_out {
+pub struct CuseInitOut {
     pub major: u32,
     pub minor: u32,
     pub unused: u32,
@@ -777,7 +777,7 @@ pub struct FuseBmapOut {
 #[cfg(feature = "abi-7-11")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_ioctl_in {
+pub struct FuseIoctlIn {
     pub fh: u64,
     pub flags: u32,
     pub cmd: u32,
@@ -789,7 +789,7 @@ pub struct fuse_ioctl_in {
 #[cfg(feature = "abi-7-16")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_ioctl_iovec {
+pub struct FuseIoctlIovec {
     pub base: u64,
     pub len: u64,
 }
@@ -797,7 +797,7 @@ pub struct fuse_ioctl_iovec {
 #[cfg(feature = "abi-7-11")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_ioctl_out {
+pub struct FuseIoctlOut {
     pub result: i32,
     pub flags: u32,
     pub in_iovs: u32,
@@ -807,7 +807,7 @@ pub struct fuse_ioctl_out {
 #[cfg(feature = "abi-7-11")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_poll_in {
+pub struct FusePollIn {
     pub fh: u64,
     pub kh: u64,
     pub flags: u32,
@@ -817,7 +817,7 @@ pub struct fuse_poll_in {
 #[cfg(feature = "abi-7-11")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_poll_out {
+pub struct FusePollOut {
     pub revents: u32,
     pub padding: u32,
 }
@@ -825,14 +825,14 @@ pub struct fuse_poll_out {
 #[cfg(feature = "abi-7-11")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_notify_poll_wakeup_out {
+pub struct FuseNotifyPollWakeupOut {
     pub kh: u64,
 }
 
 #[cfg(feature = "abi-7-19")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_fallocate_in {
+pub struct FuseFallocateIn {
     fh: u64,
     offset: u64,
     length: u64,
@@ -874,7 +874,7 @@ pub struct FuseDirent {
 #[cfg(feature = "abi-7-12")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_notify_inval_inode_out {
+pub struct FuseNotifyInvalInodeOut {
     pub ino: u64,
     pub off: i64,
     pub len: i64,
@@ -883,7 +883,7 @@ pub struct fuse_notify_inval_inode_out {
 #[cfg(feature = "abi-7-12")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_notify_inval_entry_out {
+pub struct FuseNotifyInvalEntryOut {
     pub parent: u64,
     pub namelen: u32,
     pub padding: u32,
@@ -892,7 +892,7 @@ pub struct fuse_notify_inval_entry_out {
 #[cfg(feature = "abi-7-18")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_notify_delete_out {
+pub struct FuseNotifyDeleteOut {
     parent: u64,
     child: u64,
     namelen: u32,
@@ -902,7 +902,7 @@ pub struct fuse_notify_delete_out {
 #[cfg(feature = "abi-7-15")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_notify_store_out {
+pub struct FuseNotifyStoreOut {
     pub nodeid: u64,
     pub offset: u64,
     pub size: u32,
@@ -912,7 +912,7 @@ pub struct fuse_notify_store_out {
 #[cfg(feature = "abi-7-15")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_notify_retrieve_out {
+pub struct FuseNotifyRetrieveOut {
     pub notify_unique: u64,
     pub nodeid: u64,
     pub offset: u64,
@@ -923,7 +923,7 @@ pub struct fuse_notify_retrieve_out {
 #[cfg(feature = "abi-7-15")]
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_notify_retrieve_in {
+pub struct FuseNotifyRetrieveIn {
     // matches the size of fuse_write_in
     pub dummy1: u64,
     pub offset: u64,
