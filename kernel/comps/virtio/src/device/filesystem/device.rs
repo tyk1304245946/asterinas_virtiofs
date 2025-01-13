@@ -68,14 +68,15 @@ impl FilesystemDevice {
             DmaStream::map(segment.into(), DmaDirection::FromDevice, false).unwrap()
         };
 
-        let device = FilesystemDevice {
+        let device: Arc<FilesystemDevice> = Arc::new(Self {
             config_manager,
             transport: SpinLock::new(transport),
             receive_queue,
             transmit_queue,
             send_buffer,
             receive_buffer,
-        };
+            // callbacks: RwLock::new(Vec::new()),
+        });
 
         // device.activate_receive_buffer(&mut device.receive_queue.disable_irq().lock());
 
