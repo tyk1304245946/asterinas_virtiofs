@@ -227,8 +227,6 @@
 
 use core::convert::TryFrom;
 
-use bitflags;
-use int_to_c_enum::TryFromInt;
 use ostd::Pod;
 
 /** Version number of this interface */
@@ -461,6 +459,12 @@ pub const FUSE_PASSTHROUGH: u64 = 1u64 << 37;
 pub const FUSE_NO_EXPORT_SUPPORT: u64 = 1u64 << 38;
 pub const FUSE_HAS_RESEND: u64 = 1u64 << 39;
 
+bitflags::bitflags! {
+    pub struct FuseInitFlags: u64 {
+        const FUSE_INIT_EXT = FUSE_INIT_EXT;
+    }
+}
+
 /* Obsolete alias for FUSE_DIRECT_IO_ALLOW_MMAP */
 pub const FUSE_DIRECT_IO_RELAX: u64 = FUSE_DIRECT_IO_ALLOW_MMAP;
 pub const FUSE_ALLOW_IDMAP: u64 = 1 << 40;
@@ -642,6 +646,77 @@ pub enum FuseOpcode {
     FuseInitBswapReserved = 436207616, /* FUSE_INIT << 24 */
 }
 
+/// Invalid opcode error.
+#[derive(Debug)]
+pub struct InvalidOpcodeError;
+
+impl TryFrom<u32> for FuseOpcode {
+    type Error = InvalidOpcodeError;
+
+    fn try_from(n: u32) -> Result<Self, Self::Error> {
+        match n {
+            1 => Ok(FuseOpcode::FuseLookup),
+            2 => Ok(FuseOpcode::FuseForget),
+            3 => Ok(FuseOpcode::FuseGetattr),
+            4 => Ok(FuseOpcode::FuseSetattr),
+            5 => Ok(FuseOpcode::FuseReadlink),
+            6 => Ok(FuseOpcode::FuseSymlink),
+            8 => Ok(FuseOpcode::FuseMknod),
+            9 => Ok(FuseOpcode::FuseMkdir),
+            10 => Ok(FuseOpcode::FuseUnlink),
+            11 => Ok(FuseOpcode::FuseRmdir),
+            12 => Ok(FuseOpcode::FuseRename),
+            13 => Ok(FuseOpcode::FuseLink),
+            14 => Ok(FuseOpcode::FuseOpen),
+            15 => Ok(FuseOpcode::FuseRead),
+            16 => Ok(FuseOpcode::FuseWrite),
+            17 => Ok(FuseOpcode::FuseStatfs),
+            18 => Ok(FuseOpcode::FuseRelease),
+            20 => Ok(FuseOpcode::FuseFsync),
+            21 => Ok(FuseOpcode::FuseSetxattr),
+            22 => Ok(FuseOpcode::FuseGetxattr),
+            23 => Ok(FuseOpcode::FuseListxattr),
+            24 => Ok(FuseOpcode::FuseRemovexattr),
+            25 => Ok(FuseOpcode::FuseFlush),
+            26 => Ok(FuseOpcode::FuseInit),
+            27 => Ok(FuseOpcode::FuseOpendir),
+            28 => Ok(FuseOpcode::FuseReaddir),
+            29 => Ok(FuseOpcode::FuseReleasedir),
+            30 => Ok(FuseOpcode::FuseFsyncdir),
+            31 => Ok(FuseOpcode::FuseGetlk),
+            32 => Ok(FuseOpcode::FuseSetlk),
+            33 => Ok(FuseOpcode::FuseSetlkw),
+            34 => Ok(FuseOpcode::FuseAccess),
+            35 => Ok(FuseOpcode::FuseCreate),
+            36 => Ok(FuseOpcode::FuseInterrupt),
+            37 => Ok(FuseOpcode::FuseBmap),
+            38 => Ok(FuseOpcode::FuseDestroy),
+            #[cfg(feature = "abi-7-11")]
+            39 => Ok(FuseOpcode::FuseIoctl),
+            #[cfg(feature = "abi-7-11")]
+            40 => Ok(FuseOpcode::FusePoll),
+            #[cfg(feature = "abi-7-15")]
+            41 => Ok(FuseOpcode::FuseNotifyReply),
+            #[cfg(feature = "abi-7-16")]
+            42 => Ok(FuseOpcode::FuseBatchForget),
+            #[cfg(feature = "abi-7-19")]
+            43 => Ok(FuseOpcode::FuseFallocate),
+
+            #[cfg(target_os = "macos")]
+            61 => Ok(FuseOpcode::FuseSetvolname),
+            #[cfg(target_os = "macos")]
+            62 => Ok(FuseOpcode::FuseGetxtimes),
+            #[cfg(target_os = "macos")]
+            63 => Ok(FuseOpcode::FuseExchange),
+
+            #[cfg(feature = "abi-7-12")]
+            4096 => Ok(FuseOpcode::CuseInit),
+
+            _ => Err(InvalidOpcodeError),
+        }
+    }
+}
+
 #[repr(u32)]
 pub enum FuseNotifyCode {
     FuseNotifyPoll = 1,
@@ -658,7 +733,6 @@ pub enum FuseNotifyCode {
 pub const FUSE_MIN_READ_BUFFER: u32 = 8192;
 
 pub const FUSE_COMPAT_ENTRY_OUT_SIZE: u32 = 120;
-
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
@@ -1122,10 +1196,10 @@ pub struct FuseDirent {
 
 /* Align variable length records to 64bit boundary */
 pub const fn fuse_rec_align(x: usize) -> usize {
-    (x + std::mem::size_of::<u64>() - 1) & !(std::mem::size_of::<u64>() - 1)
+    (x + core::mem::size_of::<u64>() - 1) & !(core::mem::size_of::<u64>() - 1)
 }
 
-pub const FUSE_NAME_OFFSET: usize = std::mem::size_of::<FuseDirent>() - 0;
+pub const FUSE_NAME_OFFSET: usize = core::mem::size_of::<FuseDirent>() - 0;
 pub const fn fuse_dirent_align(x: usize) -> usize {
     fuse_rec_align(x)
 }
@@ -1140,7 +1214,7 @@ pub struct FuseDirentplus {
     pub dirent: FuseDirent,
 }
 
-pub const FUSE_NAME_OFFSET_DIRENTPLUS: usize = std::mem::size_of::<FuseDirentplus>() - 0;
+pub const FUSE_NAME_OFFSET_DIRENTPLUS: usize = core::mem::size_of::<FuseDirentplus>() - 0;
 pub const fn fuse_direntplus_size(d: &FuseDirentplus) -> usize {
     fuse_dirent_align(FUSE_NAME_OFFSET_DIRENTPLUS + d.dirent.namelen as usize)
 }
@@ -1268,8 +1342,8 @@ pub struct FuseRemoveMappingOne {
     pub len: u64,     /* Length of mapping required */
 }
 
-pub const FUSE_REMOVEMAPPING_MAX_ENTRY: usize =
-    PAGE_SIZE / std::mem::size_of::<FuseRemoveMappingOne>();
+// pub const FUSE_REMOVEMAPPING_MAX_ENTRY: usize =
+//     PAGE_SIZE / core::mem::size_of::<FuseRemoveMappingOne>();
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]

@@ -14,6 +14,12 @@ bitflags::bitflags! {
     }
 }
 
+impl FilesystemFeatures {
+    pub const fn supported_features() -> Self {
+        FilesystemFeatures::VIRTIO_FS_F_NOTIFICATION
+    }
+}
+
 #[derive(Debug, Pod, Clone, Copy)]
 #[repr(C)]
 pub struct VirtioFilesystemConfig {
