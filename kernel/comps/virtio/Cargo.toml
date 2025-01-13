@@ -13,6 +13,7 @@ align_ext = { path = "../../../ostd/libs/align_ext" }
 aster-input = { path = "../input" }
 aster-block = { path = "../block" }
 aster-network = { path = "../network" }
+aster-filesystem = { path = "../filesystem" }
 aster-console = { path = "../console" }
 aster-util = { path = "../../libs/aster-util" }
 aster-rights = { path = "../../libs/aster-rights" }

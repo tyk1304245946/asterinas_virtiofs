@@ -16,6 +16,7 @@ members = [
     "kernel/comps/framebuffer",
     "kernel/comps/input",
     "kernel/comps/network",
+    "kernel/comps/filesystem",
     "kernel/comps/softirq",
     "kernel/comps/logger",
     "kernel/comps/mlsdisk",
