@@ -3,6 +3,6 @@
 pub mod config;
 pub mod device;
 pub mod fuse;
-pub mod header;
+pub mod request;
 
 pub static DEVICE_NAME: &str = "Virtio-fs";
