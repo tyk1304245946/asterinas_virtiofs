@@ -3,11 +3,12 @@
 use core::mem::offset_of;
 
 use aster_util::safe_ptr::SafePtr;
+use bitflags::bitflags;
 use ostd::Pod;
 
 use crate::transport::{ConfigManager, VirtioTransport};
 
-bitflags::bitflags! {
+bitflags! {
     pub struct FilesystemFeatures: u64{
         /// Device has support for FUSE notify messages
         const VIRTIO_FS_F_NOTIFICATION = 1 << 0;
