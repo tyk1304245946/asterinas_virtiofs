@@ -57,7 +57,7 @@ pub const FUSE_ROOT_ID: u64 = 1;
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_attr {
+pub struct FuseAttr {
     pub ino: u64,
     pub size: u64,
     pub blocks: u64,
@@ -86,7 +86,7 @@ pub struct fuse_attr {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_kstatfs {
+pub struct FuseKstatfs {
     pub blocks: u64,  // Total blocks (in units of frsize)
     pub bfree: u64,   // Free blocks
     pub bavail: u64,  // Free blocks for unprivileged users
@@ -101,7 +101,7 @@ pub struct fuse_kstatfs {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_file_lock {
+pub struct FuseFileLock {
     pub start: u64,
     pub end: u64,
     pub typ: u32,
@@ -237,127 +237,127 @@ pub struct InvalidOpcodeError;
 #[repr(u8)]
 #[derive(Default, Debug, Clone, Copy, TryFromInt)]
 #[allow(non_camel_case_types)]
-pub enum fuse_opcode {
+pub enum FuseOpcode {
     #[default]
-    FUSE_LOOKUP = 1,
-    FUSE_FORGET = 2, // no reply
-    FUSE_GETATTR = 3,
-    FUSE_SETATTR = 4,
-    FUSE_READLINK = 5,
-    FUSE_SYMLINK = 6,
-    FUSE_MKNOD = 8,
-    FUSE_MKDIR = 9,
-    FUSE_UNLINK = 10,
-    FUSE_RMDIR = 11,
-    FUSE_RENAME = 12,
-    FUSE_LINK = 13,
-    FUSE_OPEN = 14,
-    FUSE_READ = 15,
-    FUSE_WRITE = 16,
-    FUSE_STATFS = 17,
-    FUSE_RELEASE = 18,
-    FUSE_FSYNC = 20,
-    FUSE_SETXATTR = 21,
-    FUSE_GETXATTR = 22,
-    FUSE_LISTXATTR = 23,
-    FUSE_REMOVEXATTR = 24,
-    FUSE_FLUSH = 25,
-    FUSE_INIT = 26,
-    FUSE_OPENDIR = 27,
-    FUSE_READDIR = 28,
-    FUSE_RELEASEDIR = 29,
-    FUSE_FSYNCDIR = 30,
-    FUSE_GETLK = 31,
-    FUSE_SETLK = 32,
-    FUSE_SETLKW = 33,
-    FUSE_ACCESS = 34,
-    FUSE_CREATE = 35,
-    FUSE_INTERRUPT = 36,
-    FUSE_BMAP = 37,
-    FUSE_DESTROY = 38,
+    FuseLookup = 1,
+    FuseForget = 2, // no reply
+    FuseGetattr = 3,
+    FuseSetattr = 4,
+    FuseReadlink = 5,
+    FuseSymlink = 6,
+    FuseMknod = 8,
+    FuseMkdir = 9,
+    FuseUnlink = 10,
+    FuseRmdir = 11,
+    FuseRename = 12,
+    FuseLink = 13,
+    FuseOpen = 14,
+    FuseRead = 15,
+    FuseWrite = 16,
+    FuseStatfs = 17,
+    FuseRelease = 18,
+    FuseFsync = 20,
+    FuseSetxattr = 21,
+    FuseGetxattr = 22,
+    FuseListxattr = 23,
+    FuseRemovexattr = 24,
+    FuseFlush = 25,
+    FuseInit = 26,
+    FuseOpendir = 27,
+    FuseReaddir = 28,
+    FuseReleasedir = 29,
+    FuseFsyncdir = 30,
+    FuseGetlk = 31,
+    FuseSetlk = 32,
+    FuseSetlkw = 33,
+    FuseAccess = 34,
+    FuseCreate = 35,
+    FuseInterrupt = 36,
+    FuseBmap = 37,
+    FuseDestroy = 38,
     #[cfg(feature = "abi-7-11")]
-    FUSE_IOCTL = 39,
+    FuseIoctl = 39,
     #[cfg(feature = "abi-7-11")]
-    FUSE_POLL = 40,
+    FusePoll = 40,
     #[cfg(feature = "abi-7-15")]
-    FUSE_NOTIFY_REPLY = 41,
+    FuseNotifyReply = 41,
     #[cfg(feature = "abi-7-16")]
-    FUSE_BATCH_FORGET = 42,
+    FuseBatchForget = 42,
     #[cfg(feature = "abi-7-19")]
-    FUSE_FALLOCATE = 43,
+    FuseFallocate = 43,
 
     #[cfg(target_os = "macos")]
-    FUSE_SETVOLNAME = 61,
+    FuseSetvolname = 61,
     #[cfg(target_os = "macos")]
-    FUSE_GETXTIMES = 62,
+    FuseGetxtimes = 62,
     #[cfg(target_os = "macos")]
-    FUSE_EXCHANGE = 63,
+    FuseExchange = 63,
 
     #[cfg(feature = "abi-7-12")]
-    CUSE_INIT = 4096,
+    CuseInit = 4096,
 }
 
-impl TryFrom<u32> for fuse_opcode {
+impl TryFrom<u32> for FuseOpcode {
     type Error = InvalidOpcodeError;
 
     fn try_from(n: u32) -> Result<Self, Self::Error> {
         match n {
-            1 => Ok(fuse_opcode::FUSE_LOOKUP),
-            2 => Ok(fuse_opcode::FUSE_FORGET),
-            3 => Ok(fuse_opcode::FUSE_GETATTR),
-            4 => Ok(fuse_opcode::FUSE_SETATTR),
-            5 => Ok(fuse_opcode::FUSE_READLINK),
-            6 => Ok(fuse_opcode::FUSE_SYMLINK),
-            8 => Ok(fuse_opcode::FUSE_MKNOD),
-            9 => Ok(fuse_opcode::FUSE_MKDIR),
-            10 => Ok(fuse_opcode::FUSE_UNLINK),
-            11 => Ok(fuse_opcode::FUSE_RMDIR),
-            12 => Ok(fuse_opcode::FUSE_RENAME),
-            13 => Ok(fuse_opcode::FUSE_LINK),
-            14 => Ok(fuse_opcode::FUSE_OPEN),
-            15 => Ok(fuse_opcode::FUSE_READ),
-            16 => Ok(fuse_opcode::FUSE_WRITE),
-            17 => Ok(fuse_opcode::FUSE_STATFS),
-            18 => Ok(fuse_opcode::FUSE_RELEASE),
-            20 => Ok(fuse_opcode::FUSE_FSYNC),
-            21 => Ok(fuse_opcode::FUSE_SETXATTR),
-            22 => Ok(fuse_opcode::FUSE_GETXATTR),
-            23 => Ok(fuse_opcode::FUSE_LISTXATTR),
-            24 => Ok(fuse_opcode::FUSE_REMOVEXATTR),
-            25 => Ok(fuse_opcode::FUSE_FLUSH),
-            26 => Ok(fuse_opcode::FUSE_INIT),
-            27 => Ok(fuse_opcode::FUSE_OPENDIR),
-            28 => Ok(fuse_opcode::FUSE_READDIR),
-            29 => Ok(fuse_opcode::FUSE_RELEASEDIR),
-            30 => Ok(fuse_opcode::FUSE_FSYNCDIR),
-            31 => Ok(fuse_opcode::FUSE_GETLK),
-            32 => Ok(fuse_opcode::FUSE_SETLK),
-            33 => Ok(fuse_opcode::FUSE_SETLKW),
-            34 => Ok(fuse_opcode::FUSE_ACCESS),
-            35 => Ok(fuse_opcode::FUSE_CREATE),
-            36 => Ok(fuse_opcode::FUSE_INTERRUPT),
-            37 => Ok(fuse_opcode::FUSE_BMAP),
-            38 => Ok(fuse_opcode::FUSE_DESTROY),
+            1 => Ok(FuseOpcode::FuseLookup),
+            2 => Ok(FuseOpcode::FuseForget),
+            3 => Ok(FuseOpcode::FuseGetattr),
+            4 => Ok(FuseOpcode::FuseSetattr),
+            5 => Ok(FuseOpcode::FuseReadlink),
+            6 => Ok(FuseOpcode::FuseSymlink),
+            8 => Ok(FuseOpcode::FuseMknod),
+            9 => Ok(FuseOpcode::FuseMkdir),
+            10 => Ok(FuseOpcode::FuseUnlink),
+            11 => Ok(FuseOpcode::FuseRmdir),
+            12 => Ok(FuseOpcode::FuseRename),
+            13 => Ok(FuseOpcode::FuseLink),
+            14 => Ok(FuseOpcode::FuseOpen),
+            15 => Ok(FuseOpcode::FuseRead),
+            16 => Ok(FuseOpcode::FuseWrite),
+            17 => Ok(FuseOpcode::FuseStatfs),
+            18 => Ok(FuseOpcode::FuseRelease),
+            20 => Ok(FuseOpcode::FuseFsync),
+            21 => Ok(FuseOpcode::FuseSetxattr),
+            22 => Ok(FuseOpcode::FuseGetxattr),
+            23 => Ok(FuseOpcode::FuseListxattr),
+            24 => Ok(FuseOpcode::FuseRemovexattr),
+            25 => Ok(FuseOpcode::FuseFlush),
+            26 => Ok(FuseOpcode::FuseInit),
+            27 => Ok(FuseOpcode::FuseOpendir),
+            28 => Ok(FuseOpcode::FuseReaddir),
+            29 => Ok(FuseOpcode::FuseReleasedir),
+            30 => Ok(FuseOpcode::FuseFsyncdir),
+            31 => Ok(FuseOpcode::FuseGetlk),
+            32 => Ok(FuseOpcode::FuseSetlk),
+            33 => Ok(FuseOpcode::FuseSetlkw),
+            34 => Ok(FuseOpcode::FuseAccess),
+            35 => Ok(FuseOpcode::FuseCreate),
+            36 => Ok(FuseOpcode::FuseInterrupt),
+            37 => Ok(FuseOpcode::FuseBmap),
+            38 => Ok(FuseOpcode::FuseDestroy),
             #[cfg(feature = "abi-7-11")]
-            39 => Ok(fuse_opcode::FUSE_IOCTL),
+            39 => Ok(FuseOpcode::FuseIoctl),
             #[cfg(feature = "abi-7-11")]
-            40 => Ok(fuse_opcode::FUSE_POLL),
+            40 => Ok(FuseOpcode::FusePoll),
             #[cfg(feature = "abi-7-15")]
-            41 => Ok(fuse_opcode::FUSE_NOTIFY_REPLY),
+            41 => Ok(FuseOpcode::FuseNotifyReply),
             #[cfg(feature = "abi-7-16")]
-            42 => Ok(fuse_opcode::FUSE_BATCH_FORGET),
+            42 => Ok(FuseOpcode::FuseBatchForget),
             #[cfg(feature = "abi-7-19")]
-            43 => Ok(fuse_opcode::FUSE_FALLOCATE),
+            43 => Ok(FuseOpcode::FuseFallocate),
 
             #[cfg(target_os = "macos")]
-            61 => Ok(fuse_opcode::FUSE_SETVOLNAME),
+            61 => Ok(FuseOpcode::FuseSetvolname),
             #[cfg(target_os = "macos")]
-            62 => Ok(fuse_opcode::FUSE_GETXTIMES),
+            62 => Ok(FuseOpcode::FuseGetxtimes),
             #[cfg(target_os = "macos")]
-            63 => Ok(fuse_opcode::FUSE_EXCHANGE),
+            63 => Ok(FuseOpcode::FuseExchange),
 
             #[cfg(feature = "abi-7-12")]
-            4096 => Ok(fuse_opcode::CUSE_INIT),
+            4096 => Ok(FuseOpcode::CuseInit),
 
             _ => Err(InvalidOpcodeError),
         }
@@ -414,19 +414,19 @@ impl TryFrom<u32> for fuse_notify_code {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_entry_out {
+pub struct FuseEntryOut {
     pub nodeid: u64,
     pub generation: u64,
     pub entry_valid: u64,
     pub attr_valid: u64,
     pub entry_valid_nsec: u32,
     pub attr_valid_nsec: u32,
-    pub attr: fuse_attr,
+    pub attr: FuseAttr,
 }
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_forget_in {
+pub struct FuseForgetIn {
     pub nlookup: u64,
 }
 
@@ -457,11 +457,11 @@ pub struct fuse_getattr_in {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_attr_out {
+pub struct FuseAttrOut {
     pub attr_valid: u64,
     pub attr_valid_nsec: u32,
     pub dummy: u32,
-    pub attr: fuse_attr,
+    pub attr: FuseAttr,
 }
 
 #[cfg(target_os = "macos")]
@@ -476,7 +476,7 @@ pub struct fuse_getxtimes_out {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_mknod_in {
+pub struct FuseMknodIn {
     pub mode: u32,
     pub rdev: u32,
     #[cfg(feature = "abi-7-12")]
@@ -487,7 +487,7 @@ pub struct fuse_mknod_in {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_mkdir_in {
+pub struct FuseMkdirIn {
     pub mode: u32,
     #[cfg(not(feature = "abi-7-12"))]
     pub padding: u32,
@@ -518,7 +518,7 @@ pub struct fuse_link_in {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_setattr_in {
+pub struct FuseSetattrIn {
     pub valid: u32,
     pub padding: u32,
     pub fh: u64,
@@ -556,14 +556,14 @@ pub struct fuse_setattr_in {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_open_in {
+pub struct FuseOpenIn {
     pub flags: u32,
     pub unused: u32,
 }
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_create_in {
+pub struct FuseCreateIn {
     pub flags: u32,
     pub mode: u32,
     #[cfg(feature = "abi-7-12")]
@@ -574,7 +574,7 @@ pub struct fuse_create_in {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_open_out {
+pub struct FuseOpenOut {
     pub fh: u64,
     pub open_flags: u32,
     pub padding: u32,
@@ -582,7 +582,7 @@ pub struct fuse_open_out {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_release_in {
+pub struct FuseReleaseIn {
     pub fh: u64,
     pub flags: u32,
     pub release_flags: u32,
@@ -591,7 +591,7 @@ pub struct fuse_release_in {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_flush_in {
+pub struct FuseFlushIn {
     pub fh: u64,
     pub unused: u32,
     pub padding: u32,
@@ -616,7 +616,7 @@ pub struct FuseReadIn {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_write_in {
+pub struct FuseWriteIn {
     pub fh: u64,
     pub offset: u64,
     pub size: u32,
@@ -631,20 +631,20 @@ pub struct fuse_write_in {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_write_out {
+pub struct FuseWriteOut {
     pub size: u32,
     pub padding: u32,
 }
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_statfs_out {
-    pub st: fuse_kstatfs,
+pub struct FuseStatfsOut {
+    pub st: FuseKstatfs,
 }
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_fsync_in {
+pub struct FuseFsyncIn {
     pub fh: u64,
     pub fsync_flags: u32,
     pub padding: u32,
@@ -652,7 +652,7 @@ pub struct fuse_fsync_in {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_setxattr_in {
+pub struct FuseSetxattrIn {
     pub size: u32,
     pub flags: u32,
     #[cfg(target_os = "macos")]
@@ -663,7 +663,7 @@ pub struct fuse_setxattr_in {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_getxattr_in {
+pub struct FuseGetxattrIn {
     pub size: u32,
     pub padding: u32,
     #[cfg(target_os = "macos")]
@@ -674,17 +674,17 @@ pub struct fuse_getxattr_in {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_getxattr_out {
+pub struct FuseGetxattrOut {
     pub size: u32,
     pub padding: u32,
 }
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_lk_in {
+pub struct FuseLkIn {
     pub fh: u64,
     pub owner: u64,
-    pub lk: fuse_file_lock,
+    pub lk: FuseFileLock,
     #[cfg(feature = "abi-7-9")]
     pub lk_flags: u32,
     #[cfg(feature = "abi-7-9")]
@@ -693,20 +693,20 @@ pub struct fuse_lk_in {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_lk_out {
-    pub lk: fuse_file_lock,
+pub struct FuseLkOut {
+    pub lk: FuseFileLock,
 }
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_access_in {
+pub struct FuseAccessIn {
     pub mask: u32,
     pub padding: u32,
 }
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_init_in {
+pub struct FuseInitIn {
     pub major: u32,
     pub minor: u32,
     pub max_readahead: u32,
@@ -715,7 +715,7 @@ pub struct fuse_init_in {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_init_out {
+pub struct FuseInitOut {
     pub major: u32,
     pub minor: u32,
     pub max_readahead: u32,
@@ -756,13 +756,13 @@ pub struct cuse_init_out {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_interrupt_in {
+pub struct FuseInterruptIn {
     pub unique: u64,
 }
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_bmap_in {
+pub struct FuseBmapIn {
     pub block: u64,
     pub blocksize: u32,
     pub padding: u32,
@@ -770,7 +770,7 @@ pub struct fuse_bmap_in {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_bmap_out {
+pub struct FuseBmapOut {
     pub block: u64,
 }
 
@@ -863,7 +863,7 @@ pub struct FuseOutHeader {
 
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Pod)]
-pub struct fuse_dirent {
+pub struct FuseDirent {
     pub ino: u64,
     pub off: u64,
     pub namelen: u32,
