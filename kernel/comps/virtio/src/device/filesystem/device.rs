@@ -141,6 +141,56 @@ impl AnyFuseDevice for FilesystemDevice {
         }
     }
 
+    fn open(&self, nodeid: u64, flags: u32) {
+        let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+        let headerin = FuseInHeader {
+            len: (size_of::<FuseOpenIn>() as u32 + size_of::<FuseInHeader>() as u32),
+            opcode: FuseOpcode::FuseOpen as u32,
+            unique: 0,
+            nodeid: nodeid,
+            uid: 0,
+            gid: 0,
+            pid: 0,
+            total_extlen: 0,
+            padding: 0,
+        };
+
+        let openin = FuseOpenIn {
+            flags: flags,
+            open_flags: 0,
+        };
+
+        let headerin_bytes = headerin.as_bytes();
+        let openin_bytes = openin.as_bytes();
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        let openout_bytes = [0u8; size_of::<FuseOpenOut>()];
+        let concat_req = [
+            headerin_bytes,
+            openin_bytes,
+            &headerout_buffer,
+            &openout_bytes,
+        ]
+        .concat();
+
+        let mut reader = VmReader::from(concat_req.as_slice());
+        let mut writer = self.request_buffers[0].writer().unwrap();
+        let len = writer.write(&mut reader);
+        let len_in = size_of::<FuseOpenIn>() + size_of::<FuseInHeader>();
+
+        self.request_buffers[0].sync(0..len).unwrap();
+        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+        request_queue
+            .add_dma_buf(&[&slice_in], &[&slice_out])
+            .unwrap();
+
+        if request_queue.should_notify() {
+            request_queue.notify();
+        }
+    }
+
     fn readdir(&self, nodeid: u64, fh: u64, offset: u64, size: u32) {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
 
@@ -333,6 +383,19 @@ impl FilesystemDevice {
                 early_print!("open_flags:{:?}\n", dataout.open_flags);
                 early_print!("backing_id:{:?}\n", dataout.backing_id);
             }
+            FuseOpcode::FuseOpen => {
+                let _datain = reader.read_val::<FuseOpenIn>().unwrap();
+                let headerout = reader.read_val::<FuseOutHeader>().unwrap();
+                let dataout = reader.read_val::<FuseOpenOut>().unwrap();
+                early_print!(
+                    "Readdir response received: len = {:?}, error = {:?}\n",
+                    headerout.len,
+                    headerout.error
+                );
+                early_print!("fh:{:?}\n", dataout.fh);
+                early_print!("open_flags:{:?}\n", dataout.open_flags);
+                early_print!("backing_id:{:?}\n", dataout.backing_id);
+            }
             _ => {}
         }
         drop(request_queue);
@@ -349,6 +412,7 @@ pub fn test_device(device: &FilesystemDevice) {
     match *test_counter {
         1 => device.opendir(1, 0),
         2 => device.readdir(1, 0, 0, 128),
+        3 => device.open(1, 0),
         _ => (),
     };
 }
