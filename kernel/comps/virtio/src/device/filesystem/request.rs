@@ -16,6 +16,7 @@ pub trait AnyFuseDevice {
     fn init(&self);
     fn readdir(&self, nodeid: u64, fh: u64, offset: u64, size: u32);
     fn opendir(&self, nodeid: u64, flags: u32);
+    fn open(&self, nodeid: u64, flags: u32);
     fn read(&self, nodeid: u64, fh: u64, offset: u64, size: u32);
     fn flush(&self, nodeid: u64, fh: u64, lock_owner: u64);
     fn releasedir(&self, nodeid: u64, fh: u64, flags: u32);
