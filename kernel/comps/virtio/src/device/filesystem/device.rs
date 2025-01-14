@@ -454,6 +454,58 @@ impl AnyFuseDevice for FilesystemDevice {
             request_queue.notify();
         }
     }
+
+    fn release(&self, nodeid: u64, fh: u64, flags: u32, lock_owner: u64, flush: bool) {
+        let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+        let headerin = FuseInHeader {
+            len: (size_of::<FuseReleaseIn>() as u32 + size_of::<FuseInHeader>() as u32),
+            opcode: FuseOpcode::FuseRelease as u32,
+            unique: 0,
+            nodeid: nodeid,
+            uid: 0,
+            gid: 0,
+            pid: 0,
+            total_extlen: 0,
+            padding: 0,
+        };
+
+        let releasein = FuseReleaseIn {
+            fh: fh,
+            flags: flags,
+            release_flags: if flush { FUSE_RELEASE_FLUSH } else { 0 },
+            lock_owner: lock_owner,
+        };
+
+        let headerin_bytes = headerin.as_bytes();
+        let releasein_bytes = releasein.as_bytes();
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        // let releaseout_bytes = [0u8; size_of::<FuseReleaseOut>()];
+        let concat_req = [
+            headerin_bytes,
+            releasein_bytes,
+            &headerout_buffer,
+            // &releaseout_bytes,
+        ]
+        .concat();
+
+        let mut reader = VmReader::from(concat_req.as_slice());
+        let mut writer = self.request_buffers[0].writer().unwrap();
+        let len = writer.write(&mut reader);
+        let len_in = size_of::<FuseReleaseIn>() + size_of::<FuseInHeader>();
+
+        self.request_buffers[0].sync(0..len).unwrap();
+        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+        request_queue
+            .add_dma_buf(&[&slice_in], &[&slice_out])
+            .unwrap();
+
+        if request_queue.should_notify() {
+            request_queue.notify();
+        }
+    }
 }
 
 impl FilesystemDevice {
@@ -663,6 +715,18 @@ impl FilesystemDevice {
                 early_print!("attr:{:?}\n", dataout.attr);
                 early_println!();
             }
+            FuseOpcode::FuseRelease => {
+                let _datain = reader.read_val::<FuseReleaseIn>().unwrap();
+                let headerout = reader.read_val::<FuseOutHeader>().unwrap();
+                // let dataout = reader.read_val::<FuseReleaseOut>().unwrap();
+                early_print!(
+                    "Release response received: len = {:?}, error = {:?}\n",
+                    headerout.len,
+                    headerout.error
+                );
+                early_println!();
+                // early_print!("fh:{:?}\n", dataout.fh);
+            }
             _ => {}
         }
         drop(request_queue);
@@ -680,10 +744,11 @@ pub fn test_device(device: &FilesystemDevice) {
         1 => device.opendir(1, 0),
         2 => device.readdir(1, 0, 0, 128),
         3 => device.read(1, 0, 0, 128),
-        4 => device.flush(1, 0, 0),
-        5 => device.releasedir(1, 0, 0),
-        6 => device.getattr(1, 0, 0, 0),
-        7 => device.lookup(1, Vec::from(".bashrc")),
+        4 => device.release(1, 0, 0, 0, false),
+        5 => device.flush(1, 0, 0),
+        6 => device.releasedir(1, 0, 0),
+        7 => device.getattr(1, 0, 0, 0),
+        8 => device.lookup(1, Vec::from(".bashrc")),
         _ => (),
     };
 }
