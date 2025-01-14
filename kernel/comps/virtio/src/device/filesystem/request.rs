@@ -19,7 +19,19 @@ pub trait AnyFuseDevice {
     fn read(&self, nodeid: u64, fh: u64, offset: u64, size: u32);
     fn flush(&self, nodeid: u64, fh: u64, lock_owner: u64);
     fn releasedir(&self, nodeid: u64, fh: u64, flags: u32);
+    fn getattr(&self, nodeid: u64, fh: u64, flags: u32, dummy: u32);
+    fn lookup(&self, nodeid: u64, name: Vec<u8>);
     // fn interrupt(&self, nodeid: u64, fh: u64, lock_owner: u64, unique: u64);
+}
+
+/// Pad the file name/path name to multiple of 8 bytes with '\0'
+/// If repr_c is set, then one additional '\0' will be added at the end of name as if it is originally in name.
+pub fn fuse_pad_str(name: &str, repr_c: bool) -> Vec<u8> {
+    let name_len = name.len() as u32 + if repr_c { 1 } else { 0 };
+    let name_pad_len = name_len + ((8 - (name_len & 0x7)) & 0x7); //Pad to multiple of 8 bytes
+    let mut prepared_name: Vec<u8> = name.as_bytes().to_vec();
+    prepared_name.resize(name_pad_len as usize, 0);
+    prepared_name
 }
 
 #[derive(Debug)]
@@ -57,6 +69,7 @@ pub struct FuseDirentWithName {
     pub dirent: FuseDirent,
     pub name: Vec<u8>,
 }
+
 ///Contain all directory entries for one directory
 pub struct FuseReaddirOut {
     pub dirents: Vec<FuseDirentWithName>,
