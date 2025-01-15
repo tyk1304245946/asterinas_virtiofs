@@ -36,6 +36,7 @@ pub trait AnyFuseDevice {
     fn forget(&self, nodeid: u64, nlookup: u64);
     fn batch_forget(&self, forget_list: &[(u64, u64)]);
     fn link(&self, nodeid: u64, oldnodeid: u64, name: Vec<u8>);
+    fn unlink(&self, nodeid: u64, name: Vec<u8>);
 }
 
 pub fn fuse_pad_str(name: &str, repr_c: bool) -> Vec<u8> {
