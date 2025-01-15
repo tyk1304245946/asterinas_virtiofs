@@ -26,15 +26,6 @@ pub trait AnyFuseDevice {
     // fn interrupt(&self, nodeid: u64, fh: u64, lock_owner: u64, unique: u64);
 }
 
-/// Pad the file name/path name to multiple of 8 bytes with '\0'
-/// If repr_c is set, then one additional '\0' will be added at the end of name as if it is originally in name.
-pub fn fuse_pad_str(name: &str, repr_c: bool) -> Vec<u8> {
-    let name_len = name.len() as u32 + if repr_c { 1 } else { 0 };
-    let mut prepared_name: Vec<u8> = name.as_bytes().to_vec();
-    prepared_name.resize(name_len as usize, 0);
-    prepared_name
-}
-
 #[derive(Debug)]
 #[repr(C)]
 pub struct VirtioFsReq {

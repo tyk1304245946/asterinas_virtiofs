@@ -461,10 +461,12 @@ impl AnyFuseDevice for FilesystemDevice {
     fn lookup(&self, nodeid: u64, name: Vec<u8>) {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
 
-        let prepared_name = fuse_pad_str(&String::from_utf8(name).unwrap(), true);
+        // add terminating '\0' to the name
+        let mut name = name;
+        name.push(0);
 
         let headerin = FuseInHeader {
-            len: (size_of::<FuseInHeader>() as u32 + prepared_name.len() as u32),
+            len: (size_of::<FuseInHeader>() as u32 + name.len() as u32),
             opcode: FuseOpcode::FuseLookup as u32,
             unique: 0,
             nodeid: nodeid,
@@ -476,7 +478,12 @@ impl AnyFuseDevice for FilesystemDevice {
         };
 
         let headerin_bytes = headerin.as_bytes();
-        let lookupin_bytes = prepared_name.as_slice();
+        let lookupin_bytes = name.as_slice();
+
+// early_println!("lookup name: {:?}", name);
+// early_println!("headerin_bytes: {:?}", headerin_bytes);
+// early_println!("lookupin_bytes: {:?}", lookupin_bytes);
+
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
         let lookupout_bytes = [0u8; size_of::<FuseEntryOut>()];
         let concat_req = [
@@ -490,7 +497,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
         let len = writer.write(&mut reader);
-        let len_in = prepared_name.len() + size_of::<FuseInHeader>();
+        let len_in = name.len() + size_of::<FuseInHeader>();
 
         self.request_buffers[0].sync(0..len).unwrap();
         let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
