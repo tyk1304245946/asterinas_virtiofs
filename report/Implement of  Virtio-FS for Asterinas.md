@@ -56,6 +56,10 @@ impl ConfigManager<VirtioFilesystemConfig> {
 }
 ```
 
+初始化后打印出的设备配置信息如下：
+![设备配置信息](./device_config.png)
+
+
 #### 4. 关键设计考虑
 
 - **驱动程序合规性**：根据 Virtio 规范，驱动程序不得直接修改设备配置字段。驱动程序只能读取设备配置中的各个字段以获取设备的状态。
@@ -720,49 +724,437 @@ pub struct FuseLinkIn {
    - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
 
 ```rust
-fn unlink(&self, nodeid: u64, name: Vec<u8>) {
-    let mut request_queue = self.request_queues[0].disable_irq().lock();
+// 该接口没有特定的结构体定义，直接使用 FuseInHeader 即可。
+```
 
-    let prepared_name = fuse_pad_str(&String::from_utf8(name).unwrap(), true);
+### FUSE_BMAP
 
-    let headerin = FuseInHeader {
-        len: (prepared_name.len() as u32 + size_of::<FuseInHeader>() as u32),
-        opcode: FuseOpcode::FuseUnlink as u32,
-        unique: 0,
-        nodeid: nodeid,
-        uid: 0,
-        gid: 0,
-        pid: 0,
-        total_extlen: 0,
-        padding: 0,
-    };
+`FUSE_BMAP` 接口用于获取文件系统中块的映射。以下是该接口的实现步骤：
 
-    let headerin_bytes = headerin.as_bytes();
-    let prepared_name_bytes = prepared_name.as_slice();
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseBmapIn`：包含块映射的参数，包括块号和块大小。
 
-    let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
-    let concat_req = [
-        headerin_bytes,
-        prepared_name_bytes,
-        &headerout_buffer,
-    ]
-    .concat();
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+   - `FuseBmapOut`：包含块映射的结果，包括块号。
 
-    let mut reader = VmReader::from(concat_req.as_slice());
-    let mut writer = self.request_buffers[0].writer().unwrap();
-    let len = writer.write(&mut reader);
-    let len_in = prepared_name.len() + size_of::<FuseInHeader>();
+```rust
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseBmapIn {
+    pub block: u64,
+    pub blocksize: u32,
+    pub padding: u32,
+}
 
-    self.request_buffers[0].sync(0..len).unwrap();
-    let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
-    let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
-
-    request_queue
-        .add_dma_buf(&[&slice_in], &[&slice_out])
-        .unwrap();
-
-    if request_queue.should_notify() {
-        request_queue.notify();
-    }
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseBmapOut {
+    pub block: u64,
 }
 ```
+
+### FUSE_FALLOCATE
+
+`FUSE_FALLOCATE` 接口用于预分配文件空间。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseFallocateIn`：包含预分配空间的参数，包括文件句柄、偏移量、长度和模式。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+
+```rust
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseFallocateIn {
+    pub fh: u64,
+    pub offset: u64,
+    pub length: u64,
+    pub mode: u32,
+    pub padding: u32,
+}
+```
+
+### FUSE_FSYNC
+
+`FUSE_FSYNC` 接口用于同步文件的内容到存储设备。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseFsyncIn`：包含同步文件的参数，包括文件句柄和同步标志。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+
+```rust
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseFsyncIn {
+    pub fh: u64,
+    pub fsync_flags: u32,
+    pub padding: u32,
+}
+```
+
+### FUSE_FSYNC_DIR
+
+`FUSE_FSYNC_DIR` 接口用于同步目录的内容到存储设备。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseFsyncIn`：包含同步目录的参数，包括文件句柄和同步标志。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+
+```rust
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseFsyncIn {
+    pub fh: u64,
+    pub fsync_flags: u32,
+    pub padding: u32,
+}
+```
+
+### FUSE_GETLK
+
+`FUSE_GETLK` 接口用于获取文件锁的状态。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseLkIn`：包含获取文件锁状态的参数，包括文件句柄、锁所有者、锁信息和锁标志。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+   - `FuseLkOut`：包含文件锁的状态信息。
+
+```rust
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseLkIn {
+    pub fh: u64,
+    pub owner: u64,
+    pub lk: FuseFileLock,
+    pub lk_flags: u32,
+    pub padding: u32,
+}
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseLkOut {
+    pub lk: FuseFileLock,
+}
+```
+
+### FUSE_GETXATTR
+
+`FUSE_GETXATTR` 接口用于获取文件的扩展属性。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseGetxattrIn`：包含获取扩展属性的参数，包括属性名称和大小。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+   - `FuseGetxattrOut`：包含扩展属性的大小。
+
+```rust
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseGetxattrIn {
+    pub size: u32,
+    pub padding: u32,
+}
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseGetxattrOut {
+    pub size: u32,
+    pub padding: u32,
+}
+```
+
+### FUSE_IOCTL
+
+`FUSE_IOCTL` 接口用于执行文件系统的输入输出控制操作。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseIoctlIn`：包含 IO 控制操作的参数，包括文件句柄、标志、命令、参数、输入大小和输出大小。
+   - 输入数据：包含要传递给 IO 控制操作的实际数据。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+   - `FuseIoctlOut`：包含 IO 控制操作的结果，包括结果代码、标志、输入和输出的 iovec 数量。
+
+```rust
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseIoctlIn {
+    pub fh: u64,
+    pub flags: u32,
+    pub cmd: u32,
+    pub arg: u64,
+    pub in_size: u32,
+    pub out_size: u32,
+}
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseIoctlOut {
+    pub result: i32,
+    pub flags: u32,
+    pub in_iovs: u32,
+    pub out_iovs: u32,
+}
+```
+
+### FUSE_LISTXATTR
+
+`FUSE_LISTXATTR` 接口用于列出文件的所有扩展属性。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseGetxattrIn`：包含列出扩展属性的参数，包括属性名称和大小。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+   - 扩展属性列表：包含文件的所有扩展属性。
+
+```rust
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseGetxattrIn {
+    pub size: u32,
+    pub padding: u32,
+}
+```
+
+### FUSE_LSEEK
+
+`FUSE_LSEEK` 接口用于在文件中移动文件指针。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseLseekIn`：包含移动文件指针的参数，包括文件句柄、偏移量和移动方式。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+   - `FuseLseekOut`：包含移动文件指针的结果，包括新的文件偏移量。
+
+```rust
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseLseekIn {
+    pub fh: u64,
+    pub offset: u64,
+    pub whence: u32,
+    pub padding: u32,
+}
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseLseekOut {
+    pub offset: u64,
+}
+```
+
+### FUSE_MKNOD
+
+`FUSE_MKNOD` 接口用于创建一个新的节点（文件、设备等）。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseMknodIn`：包含创建节点的参数，包括模式、设备号和 umask。
+   - 节点名称：包含要创建的节点的名称。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+   - `FuseEntryOut`：包含新创建节点的元数据。
+
+```rust
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseMknodIn {
+    pub mode: u32,
+    pub rdev: u32,
+    pub umask: u32,
+    pub padding: u32,
+}
+```
+
+### FUSE_POLL
+
+`FUSE_POLL` 接口用于轮询文件描述符的事件。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FusePollIn`：包含轮询的参数，包括文件句柄、轮询句柄、标志和事件。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+   - `FusePollOut`：包含轮询的结果，包括返回的事件。
+
+```rust
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FusePollIn {
+    pub fh: u64,
+    pub kh: u64,
+    pub flags: u32,
+    pub events: u32,
+}
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FusePollOut {
+    pub revents: u32,
+    pub padding: u32,
+}
+```
+
+### FUSE_READDIRPLUS
+
+`FUSE_READDIRPLUS` 接口用于读取目录内容及其元数据。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseReadIn`：包含读取目录的参数，包括文件句柄、偏移量、读取大小、读取标志、锁所有者和标志。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+   - `FuseDirentplus`：包含目录项的元数据和名称。
+
+```rust
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseReadIn {
+    pub fh: u64,
+    pub offset: u64,
+    pub size: u32,
+    pub read_flags: u32,
+    pub lock_owner: u64,
+    pub flags: u32,
+    pub padding: u32,
+}
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseDirentplus {
+    pub entry_out: FuseEntryOut,
+    pub dirent: FuseDirent,
+}
+```
+
+### FUSE_READLINK
+
+`FUSE_READLINK` 接口用于读取符号链接的目标路径。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+   - 符号链接目标路径：包含符号链接指向的目标路径。
+
+```rust
+// 该接口没有特定的结构体定义，直接使用 FuseInHeader 即可。
+```
+
+### FUSE_REMOVEXATTR
+
+`FUSE_REMOVEXATTR` 接口用于删除文件的扩展属性。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - 属性名称：包含要删除的扩展属性的名称。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+
+```rust
+// 该接口没有特定的结构体定义，直接使用 FuseInHeader 即可。
+```
+
+### FUSE_RMDIR
+
+`FUSE_RMDIR` 接口用于删除一个目录。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - 目录名称：包含要删除的目录的名称。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+
+```rust
+// 该接口没有特定的结构体定义，直接使用 FuseInHeader 即可。
+```
+
+### FUSE_SETLK
+
+`FUSE_SETLK` 接口用于设置文件锁。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseLkIn`：包含设置文件锁的参数，包括文件句柄、锁所有者、锁信息和锁标志。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+
+```rust
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseLkIn {
+    pub fh: u64,
+    pub owner: u64,
+    pub lk: FuseFileLock,
+    pub lk_flags: u32,
+    pub padding: u32,
+}
+```
+
+### FUSE_SETLKW
+
+`FUSE_SETLKW` 接口用于设置并等待文件锁。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseLkIn`：包含设置文件锁的参数，包括文件句柄、锁所有者、锁信息和锁标志。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+
+```rust
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseLkIn {
+    pub fh: u64,
+    pub owner: u64,
+    pub lk: FuseFileLock,
+    pub lk_flags: u32,
+    pub padding: u32,
+}
+```
+
+### FUSE_SYMLINK
+
+`FUSE_SYMLINK` 接口用于创建一个符号链接。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - 链接名称：包含符号链接的名称。
+   - 目标路径：包含符号链接指向的目标路径。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+   - `FuseEntryOut`：包含新创建符号链接的元数据。
+
+```rust
+// 该接口没有特定的结构体定义，直接使用 FuseInHeader 即可。
+```
+
