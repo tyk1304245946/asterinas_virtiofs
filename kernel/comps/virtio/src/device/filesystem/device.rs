@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use alloc::{boxed::Box, string::String, sync::Arc, vec, vec::Vec};
+use alloc::{boxed::Box, format, string::String, sync::Arc, vec, vec::Vec};
 use core::{fmt::Debug, iter::Fuse};
 
 use log::debug;
@@ -929,8 +929,10 @@ impl AnyFuseDevice for FilesystemDevice {
     fn rename(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>) {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
 
+        // combine the old and new names
+
         let names = format!(
-            "{}" + "\0" + "{}",
+            "{}\0{}",
             String::from_utf8(name).unwrap(),
             String::from_utf8(newname).unwrap()
         );
@@ -971,10 +973,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
         let len = writer.write(&mut reader);
-        let len_in = prepared_name.len()
-            + prepared_newname.len()
-            + size_of::<FuseRenameIn>()
-            + size_of::<FuseInHeader>();
+        let len_in = prepared_names.len() + size_of::<FuseRenameIn>() + size_of::<FuseInHeader>();
 
         self.request_buffers[0].sync(0..len).unwrap();
         let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
@@ -993,7 +992,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
 
         let names = format!(
-            "{}" + "\0" + "{}",
+            "{}\0{}",
             String::from_utf8(name).unwrap(),
             String::from_utf8(newname).unwrap()
         );
@@ -1038,10 +1037,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
         let len = writer.write(&mut reader);
-        let len_in = prepared_name.len()
-            + prepared_newname.len()
-            + size_of::<FuseRename2In>()
-            + size_of::<FuseInHeader>();
+        let len_in = prepared_names.len() + size_of::<FuseRename2In>() + size_of::<FuseInHeader>();
 
         self.request_buffers[0].sync(0..len).unwrap();
         let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
@@ -2649,8 +2645,7 @@ pub fn test_device(device: &FilesystemDevice) {
         // // test lookup
         // 1 => device.lookup(1, Vec::from("testf01")),
 
-
-        // test opendir and readdir 
+        // test opendir and readdir
         // 1 => device.lookup(1, Vec::from("testdir")),
         // 2 => device.opendir(2, 0),
         // 3 => device.readdir(2, 0, 0, 256),
@@ -2658,7 +2653,6 @@ pub fn test_device(device: &FilesystemDevice) {
         // // test open
         // 1 => device.lookup(1, Vec::from("testf01")),
         // 2 => device.open(2, 0),
-
 
         // // test read
         // 1 => device.lookup(1, Vec::from("testf01")),
@@ -2672,7 +2666,6 @@ pub fn test_device(device: &FilesystemDevice) {
         // 1 => device.lookup(1, Vec::from("testf_write")),
         // 2 => device.open(2, 2),
         // 3 => device.write(2, 0, 0, "Test write file".as_bytes()),
-        
 
         // test create
         // 1 => device.lookup(1, "testdir".as_bytes().to_vec()),
@@ -2681,7 +2674,7 @@ pub fn test_device(device: &FilesystemDevice) {
         // test flush
         // 1 => device.lookup(1, "testf01".as_bytes().to_vec()),
         // 2 => device.open(2, 0),
-        // 3 => device.flush(2, 0, 0), 
+        // 3 => device.flush(2, 0, 0),
 
         // test releasedir
         // 1 => device.lookup(1, "testdir".as_bytes().to_vec()),
@@ -2730,15 +2723,10 @@ pub fn test_device(device: &FilesystemDevice) {
         // 1 => device.lookup(1, "testf01".as_bytes().to_vec()),
         // 2 => device.forget(2, 1),
 
-
         // test batch_forget
         // 1 => device.lookup(1, "testf01".as_bytes().to_vec()),
         // 2 => device.lookup(1, "testf02".as_bytes().to_vec()),
         // 3 => device.batch_forget(&[(2, 3)]),
-
-        
-
-
         _ => (),
     };
 }
