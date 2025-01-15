@@ -476,9 +476,8 @@ impl AnyFuseDevice for FilesystemDevice {
         gid: u32,
     ) {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
-
         let headerin = FuseInHeader {
-            len: (size_of::<FuseSetattrIn>() as u32 + size_of::<FuseInHeader>() as u32),
+            len: (size_of::<FuseInHeader>() as u32 + size_of::<FuseSetattrIn>() as u32),
             opcode: FuseOpcode::FuseSetattr as u32,
             unique: 0,
             nodeid: nodeid,
@@ -488,7 +487,6 @@ impl AnyFuseDevice for FilesystemDevice {
             total_extlen: 0,
             padding: 0,
         };
-
         let setattrin = FuseSetattrIn {
             valid: valid,
             padding: 0,
@@ -508,17 +506,18 @@ impl AnyFuseDevice for FilesystemDevice {
             unused5: 0,
         };
 
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        let setattrout_buffer = [0u8; size_of::<FuseAttrOut>()];
+
         let headerin_bytes = headerin.as_bytes();
         let setattrin_bytes = setattrin.as_bytes();
-
-        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
-        let setattrout_bytes = [0u8; size_of::<FuseAttrOut>()];
         let concat_req = [
             headerin_bytes,
             setattrin_bytes,
             &headerout_buffer,
-            &setattrout_bytes,
-        ];
+            &setattrout_buffer,
+        ]
+        .concat();
 
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
@@ -1257,9 +1256,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let prepared_name = fuse_pad_str(&String::from_utf8(name).unwrap(), true);
 
         let headerin = FuseInHeader {
-            len: (size_of::<FuseUnlinkIn>() as u32
-                + prepared_name.len() as u32
-                + size_of::<FuseInHeader>() as u32),
+            len: (prepared_name.len() as u32 + size_of::<FuseInHeader>() as u32),
             opcode: FuseOpcode::FuseUnlink as u32,
             unique: 0,
             nodeid: nodeid,
@@ -1286,7 +1283,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
         let len = writer.write(&mut reader);
-        let len_in = prepared_name.len() + size_of::<FuseUnlinkIn>() + size_of::<FuseInHeader>();
+        let len_in = prepared_name.len() + size_of::<FuseInHeader>();
 
         self.request_buffers[0].sync(0..len).unwrap();
         let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
@@ -1378,14 +1375,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let headerin_bytes = headerin.as_bytes();
         let fallocatein_bytes = fallocatein.as_bytes();
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
-        let fallocateout_bytes = [0u8; size_of::<FuseFallocateOut>()];
-        let concat_req = [
-            headerin_bytes,
-            fallocatein_bytes,
-            &headerout_buffer,
-            &fallocateout_bytes,
-        ]
-        .concat();
+        let concat_req = [headerin_bytes, fallocatein_bytes, &headerout_buffer].concat();
 
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
@@ -1454,7 +1444,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
 
         let headerin = FuseInHeader {
-            len: (size_of::<FuseFsyncdirIn>() as u32 + size_of::<FuseInHeader>() as u32),
+            len: (size_of::<FuseInHeader>() as u32),
             opcode: FuseOpcode::FuseFsyncdir as u32,
             unique: 0,
             nodeid: nodeid,
@@ -1465,28 +1455,14 @@ impl AnyFuseDevice for FilesystemDevice {
             padding: 0,
         };
 
-        let fsyncdirin = FuseFsyncdirIn {
-            fh: fh,
-            datasync: datasync,
-            padding: 0,
-        };
-
         let headerin_bytes = headerin.as_bytes();
-        let fsyncdirin_bytes = fsyncdirin.as_bytes();
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
-        let fsyncdirout_bytes = [0u8; size_of::<FuseFsyncdirOut>()];
-        let concat_req = [
-            headerin_bytes,
-            fsyncdirin_bytes,
-            &headerout_buffer,
-            &fsyncdirout_bytes,
-        ]
-        .concat();
+        let concat_req = [headerin_bytes, &headerout_buffer].concat();
 
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
         let len = writer.write(&mut reader);
-        let len_in = size_of::<FuseFsyncdirIn>() + size_of::<FuseInHeader>();
+        let len_in = size_of::<FuseInHeader>();
 
         self.request_buffers[0].sync(0..len).unwrap();
         let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
@@ -1514,7 +1490,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
 
         let headerin = FuseInHeader {
-            len: (size_of::<FuseGetlkIn>() as u32 + size_of::<FuseInHeader>() as u32),
+            len: (size_of::<FuseInHeader>() as u32),
             opcode: FuseOpcode::FuseGetlk as u32,
             unique: 0,
             nodeid: nodeid,
@@ -1525,34 +1501,15 @@ impl AnyFuseDevice for FilesystemDevice {
             padding: 0,
         };
 
-        let getlkin = FuseGetlkIn {
-            fh: fh,
-            owner: lock_owner,
-            lk: FuseFileLock {
-                start: start,
-                end: end,
-                type_: typ,
-                pid: pid,
-            },
-            padding: 0,
-        };
-
         let headerin_bytes = headerin.as_bytes();
-        let getlkin_bytes = getlkin.as_bytes();
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
-        let getlkout_bytes = [0u8; size_of::<FuseGetlkOut>()];
-        let concat_req = [
-            headerin_bytes,
-            getlkin_bytes,
-            &headerout_buffer,
-            &getlkout_bytes,
-        ]
-        .concat();
+        let getlkout_bytes = [0u8; size_of::<FuseLkOut>()];
+        let concat_req = [headerin_bytes, &headerout_buffer, &getlkout_bytes].concat();
 
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
         let len = writer.write(&mut reader);
-        let len_in = size_of::<FuseGetlkIn>() + size_of::<FuseInHeader>();
+        let len_in = size_of::<FuseInHeader>();
 
         self.request_buffers[0].sync(0..len).unwrap();
         let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
@@ -1652,7 +1609,7 @@ impl AnyFuseDevice for FilesystemDevice {
 
         let headerin_bytes = headerin.as_bytes();
         let ioctlin_bytes = ioctlin.as_bytes();
-        let in_data_bytes = in_data.as_slice();
+        let in_data_bytes = in_data;
 
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
         let ioctlout_bytes = [0u8; size_of::<FuseIoctlOut>()];
@@ -1700,7 +1657,7 @@ impl AnyFuseDevice for FilesystemDevice {
 
         let headerin_bytes = headerin.as_bytes();
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
-        let listxattrout_bytes = [0u8; size_of::<FuseListxattrOut>()];
+        let listxattrout_bytes = [0u8; size_of::<FuseGetxattrOut>()];
         let concat_req = [headerin_bytes, &headerout_buffer, &listxattrout_bytes].concat();
 
         let mut reader = VmReader::from(concat_req.as_slice());
@@ -1884,58 +1841,58 @@ impl AnyFuseDevice for FilesystemDevice {
         }
     }
 
-    // todo: readdirplus
-    fn readdirplus(&self, nodeid: u64, fh: u64, offset: u64, size: u32) {
-        let mut request_queue = self.request_queues[0].disable_irq().lock();
+    // // todo: readdirplus
+    // fn readdirplus(&self, nodeid: u64, fh: u64, offset: u64, size: u32) {
+    //     let mut request_queue = self.request_queues[0].disable_irq().lock();
 
-        let headerin = FuseInHeader {
-            len: (size_of::<FuseReaddirplusIn>() as u32 + size_of::<FuseInHeader>() as u32),
-            opcode: FuseOpcode::FuseReaddirplus as u32,
-            unique: 0,
-            nodeid: nodeid,
-            uid: 0,
-            gid: 0,
-            pid: 0,
-            total_extlen: 0,
-            padding: 0,
-        };
+    //     let headerin = FuseInHeader {
+    //         len: (size_of::<FuseReaddirplusIn>() as u32 + size_of::<FuseInHeader>() as u32),
+    //         opcode: FuseOpcode::FuseReaddirplus as u32,
+    //         unique: 0,
+    //         nodeid: nodeid,
+    //         uid: 0,
+    //         gid: 0,
+    //         pid: 0,
+    //         total_extlen: 0,
+    //         padding: 0,
+    //     };
 
-        let readdirplusin = FuseReaddirplusIn {
-            fh: fh,
-            offset: offset,
-            size: size,
-            padding: 0,
-        };
+    //     let readdirplusin = FuseReaddirplusIn {
+    //         fh: fh,
+    //         offset: offset,
+    //         size: size,
+    //         padding: 0,
+    //     };
 
-        let headerin_bytes = headerin.as_bytes();
-        let readdirplusin_bytes = readdirplusin.as_bytes();
-        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
-        let readdirplusout_bytes = [0u8; size_of::<FuseReaddirplusOut>()];
-        let concat_req = [
-            headerin_bytes,
-            readdirplusin_bytes,
-            &headerout_buffer,
-            &readdirplusout_bytes,
-        ]
-        .concat();
+    //     let headerin_bytes = headerin.as_bytes();
+    //     let readdirplusin_bytes = readdirplusin.as_bytes();
+    //     let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+    //     let readdirplusout_bytes = [0u8; size_of::<FuseReaddirplusOut>()];
+    //     let concat_req = [
+    //         headerin_bytes,
+    //         readdirplusin_bytes,
+    //         &headerout_buffer,
+    //         &readdirplusout_bytes,
+    //     ]
+    //     .concat();
 
-        let mut reader = VmReader::from(concat_req.as_slice());
-        let mut writer = self.request_buffers[0].writer().unwrap();
-        let len = writer.write(&mut reader);
-        let len_in = size_of::<FuseReaddirplusIn>() + size_of::<FuseInHeader>();
+    //     let mut reader = VmReader::from(concat_req.as_slice());
+    //     let mut writer = self.request_buffers[0].writer().unwrap();
+    //     let len = writer.write(&mut reader);
+    //     let len_in = size_of::<FuseReaddirplusIn>() + size_of::<FuseInHeader>();
 
-        self.request_buffers[0].sync(0..len).unwrap();
-        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
-        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+    //     self.request_buffers[0].sync(0..len).unwrap();
+    //     let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+    //     let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
 
-        request_queue
-            .add_dma_buf(&[&slice_in], &[&slice_out])
-            .unwrap();
+    //     request_queue
+    //         .add_dma_buf(&[&slice_in], &[&slice_out])
+    //         .unwrap();
 
-        if request_queue.should_notify() {
-            request_queue.notify();
-        }
-    }
+    //     if request_queue.should_notify() {
+    //         request_queue.notify();
+    //     }
+    // }
 
     fn readlink(&self, nodeid: u64) {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
@@ -1954,8 +1911,7 @@ impl AnyFuseDevice for FilesystemDevice {
 
         let headerin_bytes = headerin.as_bytes();
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
-        let readlinkout_bytes = [0u8; size_of::<FuseReadlinkOut>()];
-        let concat_req = [headerin_bytes, &headerout_buffer, &readlinkout_bytes].concat();
+        let concat_req = [headerin_bytes, &headerout_buffer].concat();
 
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
@@ -1981,9 +1937,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let prepared_name = fuse_pad_str(&String::from_utf8(name).unwrap(), true);
 
         let headerin = FuseInHeader {
-            len: (size_of::<FuseRemovexattrIn>() as u32
-                + prepared_name.len() as u32
-                + size_of::<FuseInHeader>() as u32),
+            len: (prepared_name.len() as u32 + size_of::<FuseInHeader>() as u32),
             opcode: FuseOpcode::FuseRemovexattr as u32,
             unique: 0,
             nodeid: nodeid,
@@ -1998,20 +1952,12 @@ impl AnyFuseDevice for FilesystemDevice {
         let prepared_name_bytes = prepared_name.as_slice();
 
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
-        let removexattrout_bytes = [0u8; size_of::<FuseRemovexattrOut>()];
-        let concat_req = [
-            headerin_bytes,
-            prepared_name_bytes,
-            &headerout_buffer,
-            &removexattrout_bytes,
-        ]
-        .concat();
+        let concat_req = [headerin_bytes, prepared_name_bytes, &headerout_buffer].concat();
 
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
         let len = writer.write(&mut reader);
-        let len_in =
-            prepared_name.len() + size_of::<FuseRemovexattrIn>() + size_of::<FuseInHeader>();
+        let len_in = prepared_name.len() + size_of::<FuseInHeader>();
 
         self.request_buffers[0].sync(0..len).unwrap();
         let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
@@ -2032,9 +1978,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let prepared_name = fuse_pad_str(&String::from_utf8(name).unwrap(), true);
 
         let headerin = FuseInHeader {
-            len: (size_of::<FuseRmdirIn>() as u32
-                + prepared_name.len() as u32
-                + size_of::<FuseInHeader>() as u32),
+            len: (prepared_name.len() as u32 + size_of::<FuseInHeader>() as u32),
             opcode: FuseOpcode::FuseRmdir as u32,
             unique: 0,
             nodeid: nodeid,
@@ -2061,7 +2005,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
         let len = writer.write(&mut reader);
-        let len_in = prepared_name.len() + size_of::<FuseRmdirIn>() + size_of::<FuseInHeader>();
+        let len_in = prepared_name.len() + size_of::<FuseInHeader>();
 
         self.request_buffers[0].sync(0..len).unwrap();
         let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
@@ -2090,7 +2034,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
 
         let headerin = FuseInHeader {
-            len: (size_of::<FuseSetlkIn>() as u32 + size_of::<FuseInHeader>() as u32),
+            len: (size_of::<FuseInHeader>() as u32),
             opcode: FuseOpcode::FuseSetlk as u32,
             unique: 0,
             nodeid: nodeid,
@@ -2101,35 +2045,14 @@ impl AnyFuseDevice for FilesystemDevice {
             padding: 0,
         };
 
-        let setlkin = FuseSetlkIn {
-            fh: fh,
-            owner: lock_owner,
-            lk: FuseFileLock {
-                start: start,
-                end: end,
-                type_: typ,
-                pid: pid,
-            },
-            sleep: sleep,
-            padding: 0,
-        };
-
         let headerin_bytes = headerin.as_bytes();
-        let setlkin_bytes = setlkin.as_bytes();
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
-        let setlkout_bytes = [0u8; size_of::<FuseSetlkOut>()];
-        let concat_req = [
-            headerin_bytes,
-            setlkin_bytes,
-            &headerout_buffer,
-            &setlkout_bytes,
-        ]
-        .concat();
+        let concat_req = [headerin_bytes, &headerout_buffer].concat();
 
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
         let len = writer.write(&mut reader);
-        let len_in = size_of::<FuseSetlkIn>() + size_of::<FuseInHeader>();
+        let len_in = size_of::<FuseInHeader>();
 
         self.request_buffers[0].sync(0..len).unwrap();
         let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
@@ -2158,7 +2081,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
 
         let headerin = FuseInHeader {
-            len: (size_of::<FuseSetlkIn>() as u32 + size_of::<FuseInHeader>() as u32),
+            len: (size_of::<FuseInHeader>() as u32),
             opcode: FuseOpcode::FuseSetlkw as u32,
             unique: 0,
             nodeid: nodeid,
@@ -2177,21 +2100,14 @@ impl AnyFuseDevice for FilesystemDevice {
         };
 
         let headerin_bytes = headerin.as_bytes();
-        let setlkin_bytes = setlkin.as_bytes();
+        let setlkin_bytes = lk.as_bytes();
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
-        let setlkout_bytes = [0u8; size_of::<FuseSetlkOut>()];
-        let concat_req = [
-            headerin_bytes,
-            setlkin_bytes,
-            &headerout_buffer,
-            &setlkout_bytes,
-        ]
-        .concat();
+        let concat_req = [headerin_bytes, setlkin_bytes, &headerout_buffer].concat();
 
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
         let len = writer.write(&mut reader);
-        let len_in = size_of::<FuseSetlkIn>() + size_of::<FuseInHeader>();
+        let len_in = size_of::<FuseInHeader>();
 
         self.request_buffers[0].sync(0..len).unwrap();
         let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
@@ -2213,8 +2129,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let prepared_link = fuse_pad_str(&String::from_utf8(link).unwrap(), true);
 
         let headerin = FuseInHeader {
-            len: (size_of::<FuseSymlinkIn>() as u32
-                + prepared_name.len() as u32
+            len: (prepared_name.len() as u32
                 + prepared_link.len() as u32
                 + size_of::<FuseInHeader>() as u32),
             opcode: FuseOpcode::FuseSymlink as u32,
@@ -2245,10 +2160,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
         let len = writer.write(&mut reader);
-        let len_in = prepared_name.len()
-            + prepared_link.len()
-            + size_of::<FuseSymlinkIn>()
-            + size_of::<FuseInHeader>();
+        let len_in = prepared_name.len() + prepared_link.len() + size_of::<FuseInHeader>();
 
         self.request_buffers[0].sync(0..len).unwrap();
         let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
@@ -2271,6 +2183,11 @@ impl FilesystemDevice {
         let supported_features = FilesystemFeatures::supported_features();
         let filesystem_features = device_features & supported_features;
         debug!("features negotiated: {:?}", filesystem_features);
+
+        early_println!("device features: {:?}", device_features);
+        early_println!("supported features: {:?}", supported_features);
+        early_println!("features negotiated: {:?}", filesystem_features);
+
         filesystem_features.bits()
     }
 
@@ -2695,7 +2612,6 @@ impl FilesystemDevice {
                 early_println!();
             }
             FuseOpcode::FuseUnlink => {
-                let _datain = reader.read_val::<FuseUnlinkIn>().unwrap();
                 let headerout = reader.read_val::<FuseOutHeader>().unwrap();
                 let dataout = reader.read_val::<FuseEntryOut>().unwrap();
                 early_print!(

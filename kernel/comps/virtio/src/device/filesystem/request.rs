@@ -75,7 +75,7 @@ pub trait AnyFuseDevice {
     fn lseek(&self, nodeid: u64, fh: u64, offset: u64, whence: u32);
     fn mknod(&self, nodeid: u64, name: Vec<u8>, mode: u32, rdev: u32);
     fn poll(&self, nodeid: u64, fh: u64, events: u32);
-    fn readdirplus(&self, nodeid: u64, fh: u64, offset: u64, size: u32);
+    // fn readdirplus(&self, nodeid: u64, fh: u64, offset: u64, size: u32);
     fn readlink(&self, nodeid: u64);
     fn removexattr(&self, nodeid: u64, name: Vec<u8>);
     fn rmdir(&self, nodeid: u64, name: Vec<u8>);
