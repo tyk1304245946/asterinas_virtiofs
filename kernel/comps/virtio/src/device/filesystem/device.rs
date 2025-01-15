@@ -482,9 +482,9 @@ impl AnyFuseDevice for FilesystemDevice {
         let headerin_bytes = headerin.as_bytes();
         let lookupin_bytes = prepared_name.as_slice();
 
-// early_println!("lookup name: {:?}", name);
-// early_println!("headerin_bytes: {:?}", headerin_bytes);
-// early_println!("lookupin_bytes: {:?}", lookupin_bytes);
+        // early_println!("lookup name: {:?}", name);
+        // early_println!("headerin_bytes: {:?}", headerin_bytes);
+        // early_println!("lookupin_bytes: {:?}", lookupin_bytes);
 
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
         let lookupout_bytes = [0u8; size_of::<FuseEntryOut>()];
@@ -751,7 +751,7 @@ impl AnyFuseDevice for FilesystemDevice {
         }
     }
 
-    fn create(&self, nodeid: u64, name: Vec<u8>, mode: u32, flags: u32) {
+    fn create(&self, nodeid: u64, name: Vec<u8>, mode: u32, umask: u32, flags: u32) {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
 
         let prepared_name = fuse_pad_str(&String::from_utf8(name).unwrap(), true);
@@ -773,7 +773,7 @@ impl AnyFuseDevice for FilesystemDevice {
         let createin = FuseCreateIn {
             flags: flags,
             mode: mode,
-            umask: 0,
+            umask: umask,
             open_flags: 0,
         };
 
@@ -1139,14 +1139,13 @@ pub fn test_device(device: &FilesystemDevice) {
     drop(test_counter);
     let test_counter = TEST_COUNTER.read();
     match *test_counter {
-        1 => device.opendir(1, 0),
-        2 => device.readdir(1, 0, 0, 128),
-        3 => device.read(1, 0, 0, 128),
-        4 => device.release(1, 0, 0, 0, false),
-        5 => device.flush(1, 0, 0),
-        6 => device.releasedir(1, 0, 0),
-        7 => device.getattr(1, 0, 0, 0),
-        8 => device.lookup(1, Vec::from(".bashrc")),
+        // // test mkdir
+        // 1 => device.lookup(1, "testdir".as_bytes().to_vec()),
+        // 2 => device.mkdir(2, 0o755, 0o777, "testdir2".as_bytes().to_vec()),
+
+        // // test create
+        // 1 => device.lookup(1, "testdir".as_bytes().to_vec()),
+        // 2 => device.create(2, "test_create".as_bytes().to_vec(), 0o755, 0o777, 2),
         _ => (),
     };
 }
