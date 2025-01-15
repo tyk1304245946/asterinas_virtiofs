@@ -655,7 +655,7 @@ impl AnyFuseDevice for FilesystemDevice {
     }
 
     fn interrupt(&self, nodeid: u64, unique: u64) {
-        let mut hiprio_queue = self.hiprio_queue[0].disable_irq().lock();
+        let mut hiprio_queue = self.hiprio_queue.disable_irq().lock();
 
         let headerin = FuseInHeader {
             len: (size_of::<FuseInterruptIn>() as u32 + size_of::<FuseInHeader>() as u32),
@@ -970,7 +970,7 @@ impl AnyFuseDevice for FilesystemDevice {
     }
 
     fn forget(&self, nodeid: u64, nlookup: u64) {
-        let mut hiprio_queue = self.hiprio_queue[0].disable_irq().lock();
+        let mut hiprio_queue = self.hiprio_queue.disable_irq().lock();
 
         let headerin = FuseInHeader {
             len: (size_of::<FuseForgetIn>() as u32 + size_of::<FuseInHeader>() as u32),
@@ -995,6 +995,52 @@ impl AnyFuseDevice for FilesystemDevice {
         let mut writer = self.request_buffers[0].writer().unwrap();
         let len = writer.write(&mut reader);
         let len_in = size_of::<FuseForgetIn>() + size_of::<FuseInHeader>();
+
+        self.request_buffers[0].sync(0..len).unwrap();
+        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+        hiprio_queue
+            .add_dma_buf(&[&slice_in], &[&slice_out])
+            .unwrap();
+
+        if hiprio_queue.should_notify() {
+            hiprio_queue.notify();
+        }
+    }
+
+    fn batch_forget(&self, forget_list: &[(u64, u64)]) {
+        let mut hiprio_queue = self.hiprio_queue.disable_irq().lock();
+
+        let headerin = FuseInHeader {
+            len: (size_of::<FuseBatchForgetIn>() as u32 + size_of::<FuseInHeader>() as u32),
+            opcode: FuseOpcode::FuseBatchForget as u32,
+            unique: 0,
+            nodeid: 0,
+            uid: 0,
+            gid: 0,
+            pid: 0,
+            total_extlen: 0,
+            padding: 0,
+        };
+
+        let mut forgetin_bytes = Vec::new();
+        for (nodeid, nlookup) in forget_list {
+            let forgetin = FuseForgetOne {
+                nodeid: *nodeid,
+                nlookup: *nlookup,
+            };
+            forgetin_bytes.extend_from_slice(&forgetin.as_bytes());
+        }
+
+        let headerin_bytes = headerin.as_bytes();
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        let concat_req = [headerin_bytes, &forgetin_bytes, &headerout_buffer].concat();
+
+        let mut reader = VmReader::from(concat_req.as_slice());
+        let mut writer = self.request_buffers[0].writer().unwrap();
+        let len = writer.write(&mut reader);
+        let len_in = forget_list.len() * size_of::<FuseForgetOne>() + size_of::<FuseInHeader>();
 
         self.request_buffers[0].sync(0..len).unwrap();
         let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
@@ -1374,6 +1420,16 @@ impl FilesystemDevice {
                 let headerout = reader.read_val::<FuseOutHeader>().unwrap();
                 early_print!(
                     "Forget response received: len = {:?}, error = {:?}\n",
+                    headerout.len,
+                    headerout.error
+                );
+                early_println!();
+            }
+            FuseOpcode::FuseBatchForget => {
+                let _datain = reader.read_val::<FuseBatchForgetIn>().unwrap();
+                let headerout = reader.read_val::<FuseOutHeader>().unwrap();
+                early_print!(
+                    "BatchForget response received: len = {:?}, error = {:?}\n",
                     headerout.len,
                     headerout.error
                 );

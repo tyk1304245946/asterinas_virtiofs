@@ -33,6 +33,7 @@ pub trait AnyFuseDevice {
     fn rename(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>);
     fn rename2(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>, flags: u32);
     fn forget(&self, nodeid: u64, nlookup: u64);
+    fn batch_forget(&self, forget_list: &[(u64, u64)]);
 }
 
 pub fn fuse_pad_str(name: &str, repr_c: bool) -> Vec<u8> {
