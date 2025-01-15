@@ -1,5 +1,9 @@
 # Implement of  Virtio-FS for Asterinas
 
+## Github Repo
+
+[https://github.com/tyk1304245946/asterinas_virtiofs](https://github.com/tyk1304245946/asterinas_virtiofs)
+
 ## 设备配置空间
 
 在我们实现的 Virtio 文件系统（virtio-fs）中，设备配置空间的设计严格遵循了 Virtio 规范，以确保与设备进行高效且兼容的通信。以下是设备配置空间的关键设计元素和实现细节。
@@ -357,11 +361,15 @@ test destroy:
 destroy的测试结果如下：
 ![destroy](destroy.png)
 
+## FUSE接口定义
+
+在`kernel/comps/virtio/src/device/filesystem/fuse.rs`中，我们将[root/include/uapi/linux/fuse.h](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/include/uapi/linux/fuse.h)中定义的fuse协议接口进行了`rust`实现。
+
 ## FUSE接口实现
 
 ### Introduction
 
-基于[root/include/uapi/linux/fuse.h](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/include/uapi/linux/fuse.h)中提供的fuse协议，我们实现了以下FUSE接口：
+基于[fuse(4) — Linux manual page](https://www.man7.org/linux/man-pages/man4/fuse.4.html)中提供的fuse协议，我们实现了以下FUSE接口：
 
 
 ```rust
