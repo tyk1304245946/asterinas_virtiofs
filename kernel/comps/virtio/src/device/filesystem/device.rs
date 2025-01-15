@@ -846,6 +846,128 @@ impl AnyFuseDevice for FilesystemDevice {
             request_queue.notify();
         }
     }
+
+    fn rename(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>) {
+        let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+        let prepared_name = fuse_pad_str(&String::from_utf8(name).unwrap(), true);
+        let prepared_newname = fuse_pad_str(&String::from_utf8(newname).unwrap(), true);
+
+        let headerin = FuseInHeader {
+            len: (size_of::<FuseRenameIn>() as u32
+                + prepared_name.len() as u32
+                + prepared_newname.len() as u32
+                + size_of::<FuseInHeader>() as u32),
+            opcode: FuseOpcode::FuseRename as u32,
+            unique: 0,
+            nodeid: nodeid,
+            uid: 0,
+            gid: 0,
+            pid: 0,
+            total_extlen: 0,
+            padding: 0,
+        };
+
+        let renamein = FuseRenameIn { newdir: newdir };
+
+        let headerin_bytes = headerin.as_bytes();
+        let renamein_bytes = renamein.as_bytes();
+        let prepared_name_bytes = prepared_name.as_slice();
+        let prepared_newname_bytes = prepared_newname.as_slice();
+
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        let renameout_bytes = [0u8; size_of::<FuseEntryOut>()];
+        let concat_req = [
+            headerin_bytes,
+            renamein_bytes,
+            prepared_name_bytes,
+            prepared_newname_bytes,
+            &headerout_buffer,
+            &renameout_bytes,
+        ]
+        .concat();
+
+        let mut reader = VmReader::from(concat_req.as_slice());
+        let mut writer = self.request_buffers[0].writer().unwrap();
+        let len = writer.write(&mut reader);
+        let len_in = prepared_name.len()
+            + prepared_newname.len()
+            + size_of::<FuseRenameIn>()
+            + size_of::<FuseInHeader>();
+
+        self.request_buffers[0].sync(0..len).unwrap();
+        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+        request_queue
+            .add_dma_buf(&[&slice_in], &[&slice_out])
+            .unwrap();
+
+        if request_queue.should_notify() {
+            request_queue.notify();
+        }
+    }
+
+    fn rename2(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>, flags: u32) {
+        let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+        let prepared_name = fuse_pad_str(&String::from_utf8(name).unwrap(), true);
+        let prepared_newname = fuse_pad_str(&String::from_utf8(newname).unwrap(), true);
+
+        let headerin = FuseInHeader {
+            len: (size_of::<FuseRename2In>() as u32
+                + prepared_name.len() as u32
+                + prepared_newname.len() as u32
+                + size_of::<FuseInHeader>() as u32),
+            opcode: FuseOpcode::FuseRename2 as u32,
+            unique: 0,
+            nodeid: nodeid,
+            uid: 0,
+            gid: 0,
+            pid: 0,
+            total_extlen: 0,
+            padding: 0,
+        };
+
+        let rename2in = FuseRename2In {
+            newdir: newdir,
+            flags: flags,
+            padding: 0,
+        };
+
+        let headerin_bytes = headerin.as_bytes();
+        let rename2in_bytes = rename2in.as_bytes();
+        let prepared_name_bytes = prepared_name.as_slice();
+        let prepared_newname_bytes = prepared_newname.as_slice();
+
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        let rename2out_bytes = [0u8; size_of::<FuseEntryOut>()];
+        let concat_req = [
+            headerin_bytes,
+            rename2in_bytes,
+            prepared_name_bytes,
+            prepared_newname_bytes,
+            &headerout_buffer,
+            &rename2out_bytes,
+        ]
+        .concat();
+
+        let mut reader = VmReader::from(concat_req.as_slice());
+        let mut writer = self.request_buffers[0].writer().unwrap();
+        let len = writer.write(&mut reader);
+        let len_in = prepared_name.len()
+            + prepared_newname.len()
+            + size_of::<FuseRename2In>()
+            + size_of::<FuseInHeader>();
+
+        self.request_buffers[0].sync(0..len).unwrap();
+        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+        request_queue
+            .add_dma_buf(&[&slice_in], &[&slice_out])
+            .unwrap();
+    }
 }
 
 impl FilesystemDevice {
@@ -1171,6 +1293,42 @@ impl FilesystemDevice {
                 );
                 early_println!();
             }
+            FuseOpcode::FuseRename => {
+                let _datain = reader.read_val::<FuseRenameIn>().unwrap();
+                let headerout = reader.read_val::<FuseOutHeader>().unwrap();
+                let dataout = reader.read_val::<FuseEntryOut>().unwrap();
+                early_print!(
+                    "Rename response received: len = {:?}, error = {:?}\n",
+                    headerout.len,
+                    headerout.error
+                );
+                early_print!("nodeid:{:?}\n", dataout.nodeid);
+                early_print!("generation:{:?}\n", dataout.generation);
+                early_print!("entry_valid:{:?}\n", dataout.entry_valid);
+                early_print!("attr_valid:{:?}\n", dataout.attr_valid);
+                early_print!("entry_valid_nsec:{:?}\n", dataout.entry_valid_nsec);
+                early_print!("attr_valid_nsec:{:?}\n", dataout.attr_valid_nsec);
+                early_print!("attr:{:?}\n", dataout.attr);
+                early_println!();
+            }
+            FuseOpcode::FuseRename2 => {
+                let _datain = reader.read_val::<FuseRename2In>().unwrap();
+                let headerout = reader.read_val::<FuseOutHeader>().unwrap();
+                let dataout = reader.read_val::<FuseEntryOut>().unwrap();
+                early_print!(
+                    "Rename2 response received: len = {:?}, error = {:?}\n",
+                    headerout.len,
+                    headerout.error
+                );
+                early_print!("nodeid:{:?}\n", dataout.nodeid);
+                early_print!("generation:{:?}\n", dataout.generation);
+                early_print!("entry_valid:{:?}\n", dataout.entry_valid);
+                early_print!("attr_valid:{:?}\n", dataout.attr_valid);
+                early_print!("entry_valid_nsec:{:?}\n", dataout.entry_valid_nsec);
+                early_print!("attr_valid_nsec:{:?}\n", dataout.attr_valid_nsec);
+                early_print!("attr:{:?}\n", dataout.attr);
+                early_println!();
+            }
             _ => {}
         }
         drop(request_queue);
@@ -1192,8 +1350,6 @@ pub fn test_device(device: &FilesystemDevice) {
         // // test create
         // 1 => device.lookup(1, "testdir".as_bytes().to_vec()),
         // 2 => device.create(2, "test_create".as_bytes().to_vec(), 0o755, 0o777, 2),
-
-        
         _ => (),
     };
 }

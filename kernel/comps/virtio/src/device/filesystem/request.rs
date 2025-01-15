@@ -30,6 +30,8 @@ pub trait AnyFuseDevice {
     fn mkdir(&self, nodeid: u64, mode: u32, umask: u32, name: Vec<u8>);
     fn create(&self, nodeid: u64, name: Vec<u8>, mode: u32, umask: u32, flags: u32);
     fn destroy(&self, nodeid: u64);
+    fn rename(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>);
+    fn rename2(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>, flags: u32);
 }
 
 pub fn fuse_pad_str(name: &str, repr_c: bool) -> Vec<u8> {
