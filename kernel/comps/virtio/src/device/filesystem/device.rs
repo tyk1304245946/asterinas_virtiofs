@@ -809,6 +809,43 @@ impl AnyFuseDevice for FilesystemDevice {
             request_queue.notify();
         }
     }
+
+    fn destroy(&self, nodeid: u64) {
+        let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+        let headerin = FuseInHeader {
+            len: (size_of::<FuseInHeader>() as u32),
+            opcode: FuseOpcode::FuseDestroy as u32,
+            unique: 0,
+            nodeid: nodeid,
+            uid: 0,
+            gid: 0,
+            pid: 0,
+            total_extlen: 0,
+            padding: 0,
+        };
+
+        let headerin_bytes = headerin.as_bytes();
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        let concat_req = [headerin_bytes, &headerout_buffer].concat();
+
+        let mut reader = VmReader::from(concat_req.as_slice());
+        let mut writer = self.request_buffers[0].writer().unwrap();
+        let len = writer.write(&mut reader);
+        let len_in = size_of::<FuseInHeader>();
+
+        self.request_buffers[0].sync(0..len).unwrap();
+        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+        request_queue
+            .add_dma_buf(&[&slice_in], &[&slice_out])
+            .unwrap();
+
+        if request_queue.should_notify() {
+            request_queue.notify();
+        }
+    }
 }
 
 impl FilesystemDevice {
@@ -1125,6 +1162,15 @@ impl FilesystemDevice {
                 early_print!("attr:{:?}\n", dataout.attr);
                 early_println!();
             }
+            FuseOpcode::FuseDestroy => {
+                let headerout = reader.read_val::<FuseOutHeader>().unwrap();
+                early_print!(
+                    "Destroy response received: len = {:?}, error = {:?}\n",
+                    headerout.len,
+                    headerout.error
+                );
+                early_println!();
+            }
             _ => {}
         }
         drop(request_queue);
@@ -1146,6 +1192,8 @@ pub fn test_device(device: &FilesystemDevice) {
         // // test create
         // 1 => device.lookup(1, "testdir".as_bytes().to_vec()),
         // 2 => device.create(2, "test_create".as_bytes().to_vec(), 0o755, 0o777, 2),
+
+        
         _ => (),
     };
 }
