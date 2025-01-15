@@ -28,6 +28,7 @@ pub trait AnyFuseDevice {
     fn interrupt(&self, nodeid: u64, unique: u64);
     // fn interrupt(&self, nodeid: u64, fh: u64, lock_owner: u64, unique: u64);
     fn mkdir(&self, nodeid: u64, mode: u32, umask: u32, name: Vec<u8>);
+    fn create(&self, nodeid: u64, name: Vec<u8>, mode: u32, flags: u32);
 }
 
 pub fn fuse_pad_str(name: &str, repr_c: bool) -> Vec<u8> {

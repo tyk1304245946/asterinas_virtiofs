@@ -750,6 +750,65 @@ impl AnyFuseDevice for FilesystemDevice {
             request_queue.notify();
         }
     }
+
+    fn create(&self, nodeid: u64, name: Vec<u8>, mode: u32, flags: u32) {
+        let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+        let prepared_name = fuse_pad_str(&String::from_utf8(name).unwrap(), true);
+
+        let headerin = FuseInHeader {
+            len: (size_of::<FuseCreateIn>() as u32
+                + prepared_name.len() as u32
+                + size_of::<FuseInHeader>() as u32),
+            opcode: FuseOpcode::FuseCreate as u32,
+            unique: 0,
+            nodeid: nodeid,
+            uid: 0,
+            gid: 0,
+            pid: 0,
+            total_extlen: 0,
+            padding: 0,
+        };
+
+        let createin = FuseCreateIn {
+            flags: flags,
+            mode: mode,
+            umask: 0,
+            open_flags: 0,
+        };
+
+        let headerin_bytes = headerin.as_bytes();
+        let createin_bytes = createin.as_bytes();
+        let prepared_name_bytes = prepared_name.as_slice();
+
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        let createout_bytes = [0u8; size_of::<FuseEntryOut>()];
+        let concat_req = [
+            headerin_bytes,
+            createin_bytes,
+            prepared_name_bytes,
+            &headerout_buffer,
+            &createout_bytes,
+        ]
+        .concat();
+
+        let mut reader = VmReader::from(concat_req.as_slice());
+        let mut writer = self.request_buffers[0].writer().unwrap();
+        let len = writer.write(&mut reader);
+        let len_in = prepared_name.len() + size_of::<FuseCreateIn>() + size_of::<FuseInHeader>();
+
+        self.request_buffers[0].sync(0..len).unwrap();
+        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+        request_queue
+            .add_dma_buf(&[&slice_in], &[&slice_out])
+            .unwrap();
+
+        if request_queue.should_notify() {
+            request_queue.notify();
+        }
+    }
 }
 
 impl FilesystemDevice {
@@ -1036,6 +1095,24 @@ impl FilesystemDevice {
                 let dataout = reader.read_val::<FuseEntryOut>().unwrap();
                 early_print!(
                     "Mkdir response received: len = {:?}, error = {:?}\n",
+                    headerout.len,
+                    headerout.error
+                );
+                early_print!("nodeid:{:?}\n", dataout.nodeid);
+                early_print!("generation:{:?}\n", dataout.generation);
+                early_print!("entry_valid:{:?}\n", dataout.entry_valid);
+                early_print!("attr_valid:{:?}\n", dataout.attr_valid);
+                early_print!("entry_valid_nsec:{:?}\n", dataout.entry_valid_nsec);
+                early_print!("attr_valid_nsec:{:?}\n", dataout.attr_valid_nsec);
+                early_print!("attr:{:?}\n", dataout.attr);
+                early_println!();
+            }
+            FuseOpcode::FuseCreate => {
+                let _datain = reader.read_val::<FuseCreateIn>().unwrap();
+                let headerout = reader.read_val::<FuseOutHeader>().unwrap();
+                let dataout = reader.read_val::<FuseEntryOut>().unwrap();
+                early_print!(
+                    "Create response received: len = {:?}, error = {:?}\n",
                     headerout.len,
                     headerout.error
                 );
