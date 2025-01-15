@@ -385,6 +385,45 @@ pub struct FuseAttrOut {
 }
 ```
 
+### FUSE_SETATTR
+
+`FUSE_SETATTR` 接口用于设置文件或目录的属性。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseSetattrIn`：包含设置属性的参数，包括有效标志、文件句柄、大小、锁所有者、时间戳、模式、用户 ID 和组 ID。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+   - `FuseAttrOut`：包含设置后的属性数据。
+
+```rust
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Pod)]
+pub struct FuseSetattrIn {
+    pub valid: u32,
+    pub padding: u32,
+    pub fh: u64,
+    pub size: u64,
+    pub lock_owner: u64,
+    pub atime: u64,
+    pub mtime: u64,
+    pub ctime: u64,
+    pub atimensec: u32,
+    pub mtimensec: u32,
+    pub ctimensec: u32,
+    pub mode: u32,
+    pub uid: u32,
+    pub gid: u32,
+    pub bkup_time: u64,
+    pub chg_time: u64,
+    pub cr_time: u64,
+    pub bkup_timens: u32,
+    pub chg_timens: u32,
+    pub cr_timens: u32,
+}
+```
+
 ### FUSE_LOOKUP
 
 `FUSE_LOOKUP` 接口用于查找目录中的文件或子目录。以下是该接口的实现步骤：

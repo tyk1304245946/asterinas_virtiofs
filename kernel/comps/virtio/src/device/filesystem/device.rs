@@ -733,14 +733,14 @@ impl AnyFuseDevice for FilesystemDevice {
         }
     }
 
-    fn interrupt(&self, nodeid: u64, unique: u64) {
+    fn interrupt(&self, unique: u64) {
         let mut hiprio_queue = self.hiprio_queue.disable_irq().lock();
 
         let headerin = FuseInHeader {
             len: (size_of::<FuseInterruptIn>() as u32 + size_of::<FuseInHeader>() as u32),
             opcode: FuseOpcode::FuseInterrupt as u32,
             unique: unique,
-            nodeid: nodeid,
+            nodeid: 0,
             uid: 0,
             gid: 0,
             pid: 0,
@@ -889,14 +889,14 @@ impl AnyFuseDevice for FilesystemDevice {
         }
     }
 
-    fn destroy(&self, nodeid: u64) {
+    fn destroy(&self) {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
 
         let headerin = FuseInHeader {
             len: (size_of::<FuseInHeader>() as u32),
             opcode: FuseOpcode::FuseDestroy as u32,
             unique: 0,
-            nodeid: nodeid,
+            nodeid: 0,
             uid: 0,
             gid: 0,
             pid: 0,
@@ -2314,7 +2314,7 @@ impl FilesystemDevice {
                 let headerout = reader.read_val::<FuseOutHeader>().unwrap();
                 let dataout = reader.read_val::<FuseOpenOut>().unwrap();
                 early_print!(
-                    "Readdir response received: len = {:?}, error = {:?}\n",
+                    "Opendir response received: len = {:?}, error = {:?}\n",
                     headerout.len,
                     headerout.error
                 );
@@ -2453,15 +2453,15 @@ impl FilesystemDevice {
             FuseOpcode::FuseAccess => {
                 let _datain = reader.read_val::<FuseAccessIn>().unwrap();
                 let headerout = reader.read_val::<FuseOutHeader>().unwrap();
-                let dataout = reader.read_val::<FuseAttrOut>().unwrap();
+                // let dataout = reader.read_val::<FuseAttrOut>().unwrap();
                 early_print!(
                     "Access response received: len = {:?}, error = {:?}\n",
                     headerout.len,
                     headerout.error
                 );
-                early_print!("attr_valid:{:?}\n", dataout.attr_valid);
-                early_print!("attr_valid_nsec:{:?}\n", dataout.attr_valid_nsec);
-                early_print!("attr:{:?}\n", dataout.attr);
+                // early_print!("attr_valid:{:?}\n", dataout.attr_valid);
+                // early_print!("attr_valid_nsec:{:?}\n", dataout.attr_valid_nsec);
+                // early_print!("attr:{:?}\n", dataout.attr);
                 early_println!();
             }
             FuseOpcode::FuseStatfs => {
@@ -2647,7 +2647,18 @@ pub fn test_device(device: &FilesystemDevice) {
     let test_counter = TEST_COUNTER.read();
     match *test_counter {
         // // test lookup
-        // 0 => device.lookup(1, Vec::from("testf01")),
+        // 1 => device.lookup(1, Vec::from("testf01")),
+
+
+        // test opendir and readdir 
+        // 1 => device.lookup(1, Vec::from("testdir")),
+        // 2 => device.opendir(2, 0),
+        // 3 => device.readdir(2, 0, 0, 256),
+
+        // // test open
+        // 1 => device.lookup(1, Vec::from("testf01")),
+        // 2 => device.open(2, 0),
+
 
         // // test read
         // 1 => device.lookup(1, Vec::from("testf01")),
@@ -2657,18 +2668,77 @@ pub fn test_device(device: &FilesystemDevice) {
         // 5 => device.open(3, 0),
         // 6 => device.read(3, 1, 0, 128),
 
-        // // test write
-        // 1 => device.lookup(1, Vec::from("testf03")),
+        // test write
+        // 1 => device.lookup(1, Vec::from("testf_write")),
         // 2 => device.open(2, 2),
-        // 3 => device.write(2, 0, 0, "Hello world 123".as_bytes()),
+        // 3 => device.write(2, 0, 0, "Test write file".as_bytes()),
+        
 
-        // // test mkdir
-        // 1 => device.lookup(1, "testdir".as_bytes().to_vec()),
-        // 2 => device.mkdir(2, 0o755, 0o777, "testdir2".as_bytes().to_vec()),
-
-        // // test create
+        // test create
         // 1 => device.lookup(1, "testdir".as_bytes().to_vec()),
         // 2 => device.create(2, "test_create".as_bytes().to_vec(), 0o755, 0o777, 2),
+
+        // test flush
+        // 1 => device.lookup(1, "testf01".as_bytes().to_vec()),
+        // 2 => device.open(2, 0),
+        // 3 => device.flush(2, 0, 0), 
+
+        // test releasedir
+        // 1 => device.lookup(1, "testdir".as_bytes().to_vec()),
+        // 2 => device.opendir(2, 0),
+        // 3 => device.readdir(2, 0, 0, 256),
+        // 4 => device.releasedir(2, 0, 0),
+        // 5 => device.readdir(2, 0, 0, 256),
+
+        // test getattr
+        // 1 => device.lookup(1, "testdir".as_bytes().to_vec()),
+        // 2 => device.getattr(2, 0, 0, 0),
+
+        // test release
+        // 1 => device.lookup(1, "testf01".as_bytes().to_vec()),
+        // 2 => device.open(2, 0),
+        // 3 => device.read(2, 0, 0, 128),
+        // 4 => device.release(2, 0, 0, 0, true),
+        // 5 => device.read(2, 0, 0, 128),
+
+        // test access
+        // 1 => device.lookup(1, "testdir".as_bytes().to_vec()),
+        // 2 => device.access(2, 0),
+
+        // test statfs
+        // 1 => device.statfs(1),
+
+        // test interrupt
+        // 1 => device.interrupt(0),
+
+        // test mkdir
+        // 1 => device.mkdir(1, 0o755, 0o777, "test_mkdir".as_bytes().to_vec()),
+
+        // test destroy
+        // 1 => device.destroy(),
+        // 2 => device.lookup(1, "testf01".as_bytes().to_vec()),
+
+        // test rename
+        // 1 => device.lookup(1, "testf01".as_bytes().to_vec()),
+        // 2 => device.rename(2, "testf01".as_bytes().to_vec(), 1, "testf01_rename".as_bytes().to_vec()),
+
+        // test rename2
+        // 1 => device.lookup(1, "testf01".as_bytes().to_vec()),
+        // 2 => device.rename2(2, "testf01".as_bytes().to_vec(), 1, "testf01_rename".as_bytes().to_vec(), 0),
+
+        // test forget
+        // 1 => device.lookup(1, "testf01".as_bytes().to_vec()),
+        // 2 => device.forget(2, 1),
+
+
+        // test batch_forget
+        // 1 => device.lookup(1, "testf01".as_bytes().to_vec()),
+        // 2 => device.lookup(1, "testf02".as_bytes().to_vec()),
+        // 3 => device.batch_forget(&[(2, 3)]),
+
+        
+
+
         _ => (),
     };
 }

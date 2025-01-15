@@ -42,12 +42,12 @@ pub trait AnyFuseDevice {
     fn release(&self, nodeid: u64, fh: u64, flags: u32, lock_owner: u64, flush: bool);
     fn access(&self, nodeid: u64, mask: u32);
     fn statfs(&self, nodeid: u64);
-    fn interrupt(&self, nodeid: u64, unique: u64);
+    fn interrupt(&self, unique: u64);
     fn write(&self, nodeid: u64, fh: u64, offset: u64, data: &[u8]);
     // fn interrupt(&self, nodeid: u64, fh: u64, lock_owner: u64, unique: u64);
     fn mkdir(&self, nodeid: u64, mode: u32, umask: u32, name: Vec<u8>);
     fn create(&self, nodeid: u64, name: Vec<u8>, mode: u32, umask: u32, flags: u32);
-    fn destroy(&self, nodeid: u64);
+    fn destroy(&self);
     fn rename(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>);
     fn rename2(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>, flags: u32);
     fn forget(&self, nodeid: u64, nlookup: u64);
