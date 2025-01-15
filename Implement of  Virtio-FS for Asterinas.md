@@ -1036,3 +1036,381 @@ fn create(&self, nodeid: u64, name: Vec<u8>, mode: u32, flags: u32) {
     }
 }
 ```
+
+### FUSE_FORGET
+
+`FUSE_FORGET` 接口用于通知文件系统内核模块忘记一个 inode。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseForgetIn`：包含忘记 inode 的参数，包括引用计数。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+
+```rust
+fn forget(&self, nodeid: u64, nlookup: u64) {
+    let mut hiprio_queue = self.hiprio_queue.disable_irq().lock();
+
+    let headerin = FuseInHeader {
+        len: (size_of::<FuseForgetIn>() as u32 + size_of::<FuseInHeader>() as u32),
+        opcode: FuseOpcode::FuseForget as u32,
+        unique: 0,
+        nodeid: nodeid,
+        uid: 0,
+        gid: 0,
+        pid: 0,
+        total_extlen: 0,
+        padding: 0,
+    };
+
+    let forgetin = FuseForgetIn { nlookup: nlookup };
+
+    let headerin_bytes = headerin.as_bytes();
+    let forgetin_bytes = forgetin.as_bytes();
+    let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+    let concat_req = [headerin_bytes, forgetin_bytes, &headerout_buffer].concat();
+
+    let mut reader = VmReader::from(concat_req.as_slice());
+    let mut writer = self.request_buffers[0].writer().unwrap();
+    let len = writer.write(&mut reader);
+    let len_in = size_of::<FuseForgetIn>() + size_of::<FuseInHeader>();
+
+    self.request_buffers[0].sync(0..len).unwrap();
+    let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+    let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+    hiprio_queue
+        .add_dma_buf(&[&slice_in], &[&slice_out])
+        .unwrap();
+
+    if hiprio_queue.should_notify() {
+        hiprio_queue.notify();
+    }
+}
+```
+
+### FUSE_BATCH_FORGET
+
+`FUSE_BATCH_FORGET` 接口用于批量通知文件系统内核模块忘记多个 inode。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseBatchForgetIn`：包含批量忘记 inode 的参数，包括 inode 数量。
+   - `FuseForgetOne`：包含每个 inode 的节点 ID 和引用计数。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+
+```rust
+fn batch_forget(&self, forget_list: &[(u64, u64)]) {
+    let mut hiprio_queue = self.hiprio_queue.disable_irq().lock();
+
+    let headerin = FuseInHeader {
+        len: (forget_list.len() * size_of::<FuseForgetOne>() + size_of::<FuseInHeader>()) as u32,
+        opcode: FuseOpcode::FuseBatchForget as u32,
+        unique: 0,
+        nodeid: 0,
+        uid: 0,
+        gid: 0,
+        pid: 0,
+        total_extlen: 0,
+        padding: 0,
+    };
+
+    let mut forgetin_bytes = Vec::new();
+    for (nodeid, nlookup) in forget_list {
+        let forget_one = FuseForgetOne {
+            nodeid: *nodeid,
+            nlookup: *nlookup,
+        };
+        forgetin_bytes.extend_from_slice(&forget_one.as_bytes());
+    }
+
+    let headerin_bytes = headerin.as_bytes();
+    let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+    let concat_req = [headerin_bytes, &forgetin_bytes, &headerout_buffer].concat();
+
+    let mut reader = VmReader::from(concat_req.as_slice());
+    let mut writer = self.request_buffers[0].writer().unwrap();
+    let len = writer.write(&mut reader);
+    let len_in = forget_list.len() * size_of::<FuseForgetOne>() + size_of::<FuseInHeader>();
+
+    self.request_buffers[0].sync(0..len).unwrap();
+    let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+    let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+    hiprio_queue
+        .add_dma_buf(&[&slice_in], &[&slice_out])
+        .unwrap();
+
+    if hiprio_queue.should_notify() {
+        hiprio_queue.notify();
+    }
+}
+```
+
+### FUSE_WRITE
+
+`FUSE_WRITE` 接口用于写入文件内容。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseWriteIn`：包含写入文件的参数，包括文件句柄、偏移量、写入大小、写入标志、锁所有者和标志。
+   - 数据：包含要写入文件的实际数据。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+   - `FuseWriteOut`：包含写入操作的结果，包括写入的字节数。
+
+```rust
+fn write(&self, nodeid: u64, fh: u64, offset: u64, data: &[u8]) {
+    let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+    let data = [data, vec![0u8; (8 - (data.len() & 0x7)) & 0x7].as_slice()].concat();
+
+    let headerin = FuseInHeader {
+        len: (size_of::<FuseWriteIn>() as u32 + size_of::<FuseInHeader>() as u32 + data.len() as u32),
+        opcode: FuseOpcode::FuseWrite as u32,
+        unique: 0,
+        nodeid: nodeid,
+        uid: 0,
+        gid: 0,
+        pid: 0,
+        total_extlen: 0,
+        padding: 0,
+    };
+
+    let writein = FuseWriteIn {
+        fh: fh,
+        offset: offset,
+        size: data.len() as u32,
+        write_flags: 0,
+        lock_owner: 0,
+        flags: 0,
+        padding: 0,
+    };
+
+    let headerin_bytes = headerin.as_bytes();
+    let writein_bytes = writein.as_bytes();
+    let data_bytes = data.as_slice();
+    let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+    let writeout_buffer = [0u8; size_of::<FuseWriteOut>()];
+    let concat_req = [
+        headerin_bytes,
+        writein_bytes,
+        data_bytes,
+        &headerout_buffer,
+        &writeout_buffer,
+    ]
+    .concat();
+
+    let mut reader = VmReader::from(concat_req.as_slice());
+    let mut writer = self.request_buffers[0].writer().unwrap();
+    let len = writer.write(&mut reader);
+    let len_in = size_of::<FuseWriteIn>() + size_of::<FuseInHeader>() + data.len() as usize;
+
+    self.request_buffers[0].sync(0..len).unwrap();
+    let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in as usize);
+    let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in as usize, len);
+
+    request_queue
+        .add_dma_buf(&[&slice_in], &[&slice_out])
+        .unwrap();
+
+    if request_queue.should_notify() {
+        request_queue.notify();
+    }
+}
+```
+
+### FUSE_DESTROY
+
+`FUSE_DESTROY` 接口用于销毁文件系统实例。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+
+```rust
+fn destroy(&self, nodeid: u64) {
+    let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+    let headerin = FuseInHeader {
+        len: size_of::<FuseInHeader>() as u32,
+        opcode: FuseOpcode::FuseDestroy as u32,
+        unique: 0,
+        nodeid: nodeid,
+        uid: 0,
+        gid: 0,
+        pid: 0,
+        total_extlen: 0,
+        padding: 0,
+    };
+
+    let headerin_bytes = headerin.as_bytes();
+    let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+    let concat_req = [headerin_bytes, &headerout_buffer].concat();
+
+    let mut reader = VmReader::from(concat_req.as_slice());
+    let mut writer = self.request_buffers[0].writer().unwrap();
+    let len = writer.write(&mut reader);
+    let len_in = size_of::<FuseInHeader>();
+
+    self.request_buffers[0].sync(0..len).unwrap();
+    let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+    let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+    request_queue
+        .add_dma_buf(&[&slice_in], &[&slice_out])
+        .unwrap();
+
+    if request_queue.should_notify() {
+        request_queue.notify();
+    }
+}
+```
+
+### FUSE_RENAME
+
+`FUSE_RENAME` 接口用于重命名文件或目录。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseRenameIn`：包含重命名的参数，包括新目录的节点 ID。
+   - 原名称：包含要重命名的文件或目录的原名称。
+   - 新名称：包含重命名后的文件或目录的新名称。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+
+```rust
+fn rename(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>) {
+    let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+    let prepared_name = fuse_pad_str(&String::from_utf8(name).unwrap(), true);
+    let prepared_newname = fuse_pad_str(&String::from_utf8(newname).unwrap(), true);
+
+    let headerin = FuseInHeader {
+        len: (size_of::<FuseRenameIn>() as u32 + size_of::<FuseInHeader>() as u32 + prepared_name.len() as u32 + prepared_newname.len() as u32),
+        opcode: FuseOpcode::FuseRename as u32,
+        unique: 0,
+        nodeid: nodeid,
+        uid: 0,
+        gid: 0,
+        pid: 0,
+        total_extlen: 0,
+        padding: 0,
+    };
+
+    let renamein = FuseRenameIn { newdir: newdir };
+
+    let headerin_bytes = headerin.as_bytes();
+    let renamein_bytes = renamein.as_bytes();
+    let prepared_name_bytes = prepared_name.as_slice();
+    let prepared_newname_bytes = prepared_newname.as_slice();
+
+    let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+    let concat_req = [
+        headerin_bytes,
+        renamein_bytes,
+        prepared_name_bytes,
+        prepared_newname_bytes,
+        &headerout_buffer,
+    ]
+    .concat();
+
+    let mut reader = VmReader::from(concat_req.as_slice());
+    let mut writer = self.request_buffers[0].writer().unwrap();
+    let len = writer.write(&mut reader);
+    let len_in = size_of::<FuseRenameIn>() + size_of::<FuseInHeader>() + prepared_name.len() + prepared_newname.len();
+
+    self.request_buffers[0].sync(0..len).unwrap();
+    let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+    let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+    request_queue
+        .add_dma_buf(&[&slice_in], &[&slice_out])
+        .unwrap();
+
+    if request_queue.should_notify() {
+        request_queue.notify();
+    }
+}
+```
+
+### FUSE_RENAME2
+
+`FUSE_RENAME2` 接口用于重命名文件或目录，并允许指定额外的标志。以下是该接口的实现步骤：
+
+1. **输入**：
+   - `FuseInHeader`：包含请求的元数据，包括请求长度、操作码、唯一标识符、节点 ID、用户 ID、组 ID、进程 ID 等。
+   - `FuseRename2In`：包含重命名的参数，包括新目录的节点 ID和标志位。
+   - 原名称：包含要重命名的文件或目录的原名称。
+   - 新名称：包含重命名后的文件或目录的新名称。
+
+2. **输出**：
+   - `FuseOutHeader`：包含响应的元数据，包括响应长度、错误码、唯一标识符等。
+
+```rust
+fn rename2(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>, flags: u32) {
+    let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+    let prepared_name = fuse_pad_str(&String::from_utf8(name).unwrap(), true);
+    let prepared_newname = fuse_pad_str(&String::from_utf8(newname).unwrap(), true);
+
+    let headerin = FuseInHeader {
+        len: (size_of::<FuseRename2In>() as u32 + size_of::<FuseInHeader>() as u32 + prepared_name.len() as u32 + prepared_newname.len() as u32),
+        opcode: FuseOpcode::FuseRename2 as u32,
+        unique: 0,
+        nodeid: nodeid,
+        uid: 0,
+        gid: 0,
+        pid: 0,
+        total_extlen: 0,
+        padding: 0,
+    };
+
+    let rename2in = FuseRename2In {
+        newdir: newdir,
+        flags: flags,
+    };
+
+    let headerin_bytes = headerin.as_bytes();
+    let rename2in_bytes = rename2in.as_bytes();
+    let prepared_name_bytes = prepared_name.as_slice();
+    let prepared_newname_bytes = prepared_newname.as_slice();
+
+    let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+    let rename2out_bytes = [0u8; size_of::<FuseEntryOut>()];
+    let concat_req = [
+        headerin_bytes,
+        rename2in_bytes,
+        prepared_name_bytes,
+        prepared_newname_bytes,
+        &headerout_buffer,
+        &rename2out_bytes,
+    ]
+    .concat();
+
+    let mut reader = VmReader::from(concat_req.as_slice());
+    let mut writer = self.request_buffers[0].writer().unwrap();
+    let len = writer.write(&mut reader);
+    let len_in = size_of::<FuseRename2In>() + size_of::<FuseInHeader>() + prepared_name.len() + prepared_newname.len();
+
+    self.request_buffers[0].sync(0..len).unwrap();
+    let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+    let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+    request_queue
+        .add_dma_buf(&[&slice_in], &[&slice_out])
+        .unwrap();
+
+    if request_queue.should_notify() {
+        request_queue.notify();
+    }
+}
+```
+
