@@ -21,6 +21,23 @@ pub trait AnyFuseDevice {
     fn flush(&self, nodeid: u64, fh: u64, lock_owner: u64);
     fn releasedir(&self, nodeid: u64, fh: u64, flags: u32);
     fn getattr(&self, nodeid: u64, fh: u64, flags: u32, dummy: u32);
+    fn setattr(
+        &self,
+        nodeid: u64,
+        valid: u32,
+        fh: u64,
+        size: u64,
+        lock_owner: u64,
+        atime: u64,
+        mtime: u64,
+        ctime: u64,
+        atimensec: u32,
+        mtimensec: u32,
+        ctimensec: u32,
+        mode: u32,
+        uid: u32,
+        gid: u32,
+    );
     fn lookup(&self, nodeid: u64, name: Vec<u8>);
     fn release(&self, nodeid: u64, fh: u64, flags: u32, lock_owner: u64, flush: bool);
     fn access(&self, nodeid: u64, mask: u32);
@@ -35,6 +52,56 @@ pub trait AnyFuseDevice {
     fn rename2(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>, flags: u32);
     fn forget(&self, nodeid: u64, nlookup: u64);
     fn batch_forget(&self, forget_list: &[(u64, u64)]);
+    fn link(&self, nodeid: u64, oldnodeid: u64, name: Vec<u8>);
+    fn unlink(&self, nodeid: u64, name: Vec<u8>);
+
+    fn bmap(&self, nodeid: u64, blocksize: u32, index: u64);
+    fn fallocate(&self, nodeid: u64, fh: u64, offset: u64, length: u64, mode: u32);
+    fn fsync(&self, nodeid: u64, fh: u64, datasync: u32);
+    fn fsyncdir(&self, nodeid: u64, fh: u64, datasync: u32);
+    fn getlk(
+        &self,
+        nodeid: u64,
+        fh: u64,
+        lock_owner: u64,
+        start: u64,
+        end: u64,
+        typ: u32,
+        pid: u32,
+    );
+    fn getxattr(&self, nodeid: u64, name: Vec<u8>, size: u32);
+    fn ioctl(&self, nodeid: u64, fh: u64, flags: u32, cmd: u32, in_data: &[u8]);
+    fn listxattr(&self, nodeid: u64, size: u32);
+    fn lseek(&self, nodeid: u64, fh: u64, offset: u64, whence: u32);
+    fn mknod(&self, nodeid: u64, name: Vec<u8>, mode: u32, rdev: u32);
+    fn poll(&self, nodeid: u64, fh: u64, events: u32);
+    // fn readdirplus(&self, nodeid: u64, fh: u64, offset: u64, size: u32);
+    fn readlink(&self, nodeid: u64);
+    fn removexattr(&self, nodeid: u64, name: Vec<u8>);
+    fn rmdir(&self, nodeid: u64, name: Vec<u8>);
+    fn setlk(
+        &self,
+        nodeid: u64,
+        fh: u64,
+        lock_owner: u64,
+        start: u64,
+        end: u64,
+        typ: u32,
+        pid: u32,
+        sleep: u32,
+    );
+    fn setlkw(
+        &self,
+        nodeid: u64,
+        fh: u64,
+        lock_owner: u64,
+        start: u64,
+        end: u64,
+        typ: u32,
+        pid: u32,
+        sleep: u32,
+    );
+    fn symlink(&self, nodeid: u64, name: Vec<u8>, link: Vec<u8>);
 }
 
 pub fn fuse_pad_str(name: &str, repr_c: bool) -> Vec<u8> {
