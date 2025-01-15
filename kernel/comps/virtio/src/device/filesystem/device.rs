@@ -458,6 +458,86 @@ impl AnyFuseDevice for FilesystemDevice {
         }
     }
 
+    fn setattr(
+        &self,
+        nodeid: u64,
+        valid: u32,
+        fh: u64,
+        size: u64,
+        lock_owner: u64,
+        atime: u64,
+        mtime: u64,
+        ctime: u64,
+        atimensec: u32,
+        mtimensec: u32,
+        ctimensec: u32,
+        mode: u32,
+        uid: u32,
+        gid: u32,
+    ) {
+        let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+        let headerin = FuseInHeader {
+            len: (size_of::<FuseSetattrIn>() as u32 + size_of::<FuseInHeader>() as u32),
+            opcode: FuseOpcode::FuseSetattr as u32,
+            unique: 0,
+            nodeid: nodeid,
+            uid: 0,
+            gid: 0,
+            pid: 0,
+            total_extlen: 0,
+            padding: 0,
+        };
+
+        let setattrin = FuseSetattrIn {
+            valid: valid,
+            padding: 0,
+            fh: fh,
+            size: size,
+            lock_owner: lock_owner,
+            atime: atime,
+            mtime: mtime,
+            ctime: ctime,
+            atimensec: atimensec,
+            mtimensec: mtimensec,
+            ctimensec: ctimensec,
+            mode: mode,
+            unused4: 0,
+            uid: uid,
+            gid: gid,
+            unused5: 0,
+        };
+        
+        let headerin_bytes = headerin.as_bytes();
+        let setattrin_bytes = setattrin.as_bytes();
+        
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        let setattrout_bytes = [0u8; size_of::<FuseAttrOut>()];
+        let concat_req = [
+            headerin_bytes,
+            setattrin_bytes,
+            &headerout_buffer,
+            &setattrout_bytes,
+        ]
+
+        let mut reader = VmReader::from(concat_req.as_slice());
+        let mut writer = self.request_buffers[0].writer().unwrap();
+        let len = writer.write(&mut reader);
+        let len_in = size_of::<FuseSetattrIn>() + size_of::<FuseInHeader>();
+        
+        self.request_buffers[0].sync(0..len).unwrap();
+        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+        
+        request_queue
+            .add_dma_buf(&[&slice_in], &[&slice_out])
+            .unwrap();
+
+        if request_queue.should_notify() {
+            request_queue.notify();
+        }
+    }
+
     fn lookup(&self, nodeid: u64, name: Vec<u8>) {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
 
@@ -1422,6 +1502,20 @@ impl FilesystemDevice {
                 let dataout = reader.read_val::<FuseAttrOut>().unwrap();
                 early_print!(
                     "Getattr response received: len = {:?}, error = {:?}\n",
+                    headerout.len,
+                    headerout.error
+                );
+                early_print!("attr_valid:{:?}\n", dataout.attr_valid);
+                early_print!("attr_valid_nsec:{:?}\n", dataout.attr_valid_nsec);
+                early_print!("attr:{:?}\n", dataout.attr);
+                early_println!();
+            }
+            FuseOpcode::FuseSetattr => {
+                let _datain = reader.read_val::<FuseSetattrIn>().unwrap();
+                let headerout = reader.read_val::<FuseOutHeader>().unwrap();
+                let dataout = reader.read_val::<FuseAttrOut>().unwrap();
+                early_print!(
+                    "Setattr response received: len = {:?}, error = {:?}\n",
                     headerout.len,
                     headerout.error
                 );
