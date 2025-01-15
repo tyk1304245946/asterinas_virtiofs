@@ -26,6 +26,7 @@ pub trait AnyFuseDevice {
     fn access(&self, nodeid: u64, mask: u32);
     fn statfs(&self, nodeid: u64);
     fn interrupt(&self, nodeid: u64, unique: u64);
+    fn write(&self, nodeid: u64, fh: u64, offset: u64, data: &[u8]);
     // fn interrupt(&self, nodeid: u64, fh: u64, lock_owner: u64, unique: u64);
     fn mkdir(&self, nodeid: u64, mode: u32, umask: u32, name: Vec<u8>);
     fn create(&self, nodeid: u64, name: Vec<u8>, mode: u32, umask: u32, flags: u32);
