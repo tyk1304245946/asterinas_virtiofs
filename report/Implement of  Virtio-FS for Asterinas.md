@@ -349,7 +349,61 @@ test destroy:
 destroy的测试结果如下：
 ![destroy](destroy.png)
 
-## FUSE接口设计
+## FUSE接口实现
+
+### Introduction
+
+基于[root/include/uapi/linux/fuse.h](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/include/uapi/linux/fuse.h)中提供的fuse协议，我们实现了以下FUSE接口：
+
+
+```rust
+pub trait AnyFuseDevice {
+   fn init(&self);
+   fn readdir(&self, nodeid: u64, fh: u64, offset: u64, size: u32);
+   fn opendir(&self, nodeid: u64, flags: u32);
+   fn open(&self, nodeid: u64, flags: u32);
+   fn read(&self, nodeid: u64, fh: u64, offset: u64, size: u32);
+   fn flush(&self, nodeid: u64, fh: u64, lock_owner: u64);
+   fn releasedir(&self, nodeid: u64, fh: u64, flags: u32);
+   fn getattr(&self, nodeid: u64, fh: u64, flags: u32, dummy: u32);
+   fn setattr( &self, nodeid: u64, valid: u32, fh: u64, size: u64, lock_owner: u64, atime: u64, mtime: u64, ctime: u64, atimensec: u32, mtimensec: u32, ctimensec: u32, mode: u32, uid: u32, gid: u32);
+   fn lookup(&self, nodeid: u64, name: Vec<u8>);
+   fn release(&self, nodeid: u64, fh: u64, flags: u32, lock_owner: u64, flush: bool);
+   fn access(&self, nodeid: u64, mask: u32);
+   fn statfs(&self, nodeid: u64);
+   fn interrupt(&self, unique: u64);
+   fn write(&self, nodeid: u64, fh: u64, offset: u64, data: &[u8]);
+   fn mkdir(&self, nodeid: u64, mode: u32, umask: u32, name: Vec<u8>);
+   fn create(&self, nodeid: u64, name: Vec<u8>, mode: u32, umask: u32, flags: u32);
+   fn destroy(&self);
+   fn rename(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>);
+   fn rename2(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>, flags: u32);
+   fn forget(&self, nodeid: u64, nlookup: u64);
+   fn batch_forget(&self, forget_list: &[(u64, u64)]);
+   fn link(&self, nodeid: u64, oldnodeid: u64, name: Vec<u8>);
+   fn unlink(&self, nodeid: u64, name: Vec<u8>);
+   /// 以上接口均进行测试，并后附测试过程及结果
+
+   /// 以下接口未进行实际测试，仅实现
+   fn bmap(&self, nodeid: u64, blocksize: u32, index: u64);
+   fn fallocate(&self, nodeid: u64, fh: u64, offset: u64, length: u64, mode: u32);
+   fn fsync(&self, nodeid: u64, fh: u64, datasync: u32);
+   fn fsyncdir(&self, nodeid: u64, fh: u64, datasync: u32);
+   fn getlk( &self, nodeid: u64, fh: u64, lock_owner: u64, start: u64, end: u64, typ: u32, pid: u32);
+   fn getxattr(&self, nodeid: u64, name: Vec<u8>, size: u32);
+   fn ioctl(&self, nodeid: u64, fh: u64, flags: u32, cmd: u32, in_data: &[u8]);
+   fn listxattr(&self, nodeid: u64, size: u32);
+   fn lseek(&self, nodeid: u64, fh: u64, offset: u64, whence: u32);
+   fn mknod(&self, nodeid: u64, name: Vec<u8>, mode: u32, rdev: u32);
+   fn poll(&self, nodeid: u64, fh: u64, events: u32);
+   fn readlink(&self, nodeid: u64);
+   fn removexattr(&self, nodeid: u64, name: Vec<u8>);
+   fn rmdir(&self, nodeid: u64, name: Vec<u8>);
+   fn setlk(&self,nodeid: u64,fh: u64,lock_owner: u64,start: u64,end: u64,typ: u32,pid: u32,sleep: u32);
+   fn setlkw(&self,nodeid: u64,fh: u64,lock_owner: u64,start: u64,end: u64,typ: u32,pid: u32,sleep: u32);
+   fn symlink(&self, nodeid: u64, name: Vec<u8>, link: Vec<u8>);
+}
+```
 
 ### FUSE_INIT
 
@@ -1401,3 +1455,54 @@ pub struct FuseLkIn {
 // 该接口没有特定的结构体定义，直接使用 FuseInHeader 即可。
 ```
 
+## Advanced
+
+### Improvement of `virtiofsd`
+
+在实现及测试`lookup`的过程中，我们遇到了一个很棘手的问题，lookup的文件名为'.bashrc'时可以正常运行，但一旦改为'test'或其他就会出现问题。
+
+即使在查阅资料仔细研究`virtiofs`的数据传输过程，及`virtiofsd`的源码，我们也无法找到问题所在。
+
+最后经过一天的查找与搜寻，我们发现了问题所在，`virtiofs`对于`name`字段传输时需要保证其为`C`风格的字符串，即以`\0`结尾，并且要求`name`字段的长度为8的倍数。**但是**，`virtiofsd`在处理该字段时，会对于末尾多余的`\0`报`InteriorNul()`错误，导致无法正常运行。
+
+因此，我们仔细研究了`virtiofsd`的源码，找到了处理`name`字段的函数，发现了问题所在。
+
+```rust
+pub fn from_vec_with_nul(v: Vec<u8>) -> Result<Self, FromVecWithNulError> {
+        let nul_pos = memchr::memchr(0, &v);
+        match nul_pos {
+            Some(nul_pos) if nul_pos + 1 == v.len() => {
+                // SAFETY: We know there is only one nul byte, at the end
+                // of the vec.
+                Ok(unsafe { Self::_from_vec_with_nul_unchecked(v) })
+            }
+            Some(nul_pos) => Err(FromVecWithNulError {
+                error_kind: FromBytesWithNulErrorKind::InteriorNul(nul_pos),
+                bytes: v,
+            }),
+            None => Err(FromVecWithNulError {
+                error_kind: FromBytesWithNulErrorKind::NotNulTerminated,
+                bytes: v,
+            }),
+        }
+    }
+```
+
+因此，我们对于`virtiofsd`的源码进行了修改，使其可以正常处理经过`\0`拓展过的`name`字段。
+
+```rust
+fn bytes_to_cstr(buf: &[u8]) -> Result<&CStr> {
+    // Convert to a `CStr` first so that we can drop the '\0' byte at the end
+    // and make sure there are no interior '\0' bytes.
+
+    let result = if let Some(pos) = buf.iter().rposition(|&x| x != b'\0') {
+        &buf[..=pos + 1]
+    } else {
+        buf
+    };
+
+    CStr::from_bytes_with_nul(&result).map_err(Error::InvalidCString)
+}
+```
+
+该改进使得`virtiofsd`可以正常处理`name`字段，从而可以正常运行。我们也计划将该改进提交到`virtiofsd`的源码中。
