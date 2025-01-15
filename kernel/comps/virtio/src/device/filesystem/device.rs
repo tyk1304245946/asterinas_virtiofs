@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, string::String, sync::Arc, vec, vec::Vec};
 use core::{fmt::Debug, iter::Fuse};
 
 use log::debug;
 use ostd::{
     early_print, early_println,
-    mm::{DmaDirection, DmaStream, DmaStreamSlice, FrameAllocOptions, VmReader},
+    mm::{DmaDirection, DmaStream, DmaStreamSlice, FrameAllocOptions, VmReader, VmWriter},
     sync::{RwLock, SpinLock},
     trap::TrapFrame,
     Pod,
@@ -556,6 +556,70 @@ impl AnyFuseDevice for FilesystemDevice {
             request_queue.notify();
         }
     }
+
+    fn write(&self, nodeid: u64, fh: u64, offset: u64, data: &[u8]) {
+        let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+        let data = [data, vec![0u8; (8 - (data.len() & 0x7)) & 0x7].as_slice()].concat();
+
+        let headerin = FuseInHeader {
+            len: size_of::<FuseInHeader>() as u32
+                + size_of::<FuseWriteIn>() as u32
+                + data.len() as u32,
+            opcode: FuseOpcode::FuseWrite as u32,
+            unique: 0,
+            nodeid: nodeid,
+            uid: 0,
+            gid: 0,
+            pid: 0,
+            total_extlen: 0,
+            padding: 0,
+        };
+
+        let writein = FuseWriteIn {
+            fh: fh,
+            offset: offset,
+            size: data.len() as u32,
+            write_flags: FUSE_WRITE_LOCKOWNER,
+            lock_owner: 0,
+            flags: 0,
+            padding: 0,
+        };
+        
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        let writeout_buffer = [0u8; size_of::<FuseWriteOut>()];
+
+        let data_bytes = data.as_slice();
+        let writein_bytes = writein.as_bytes();
+        let headerin_bytes = headerin.as_bytes();
+        let concat_req = [
+            headerin_bytes,
+            writein_bytes,
+            data_bytes,
+            &headerout_buffer,
+            &writeout_buffer,
+        ]
+        .concat();
+
+        let mut reader = VmReader::from(concat_req.as_slice());
+        let mut writer = self.request_buffers[0].writer().unwrap();
+        let len = writer.write(&mut reader);
+        let len_in = size_of::<FuseWriteIn>() + size_of::<FuseInHeader>() + data.len() as usize;
+
+        self.request_buffers[0].sync(0..len).unwrap();
+        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in as usize);
+        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in as usize, len);
+
+        request_queue
+            .add_dma_buf(&[&slice_in], &[&slice_out])
+            .unwrap();
+
+        if request_queue.should_notify() {
+            request_queue.notify();
+        }
+
+
+    }
 }
 
 impl FilesystemDevice {
@@ -712,17 +776,24 @@ impl FilesystemDevice {
             FuseOpcode::FuseRead => {
                 let _datain = reader.read_val::<FuseReadIn>().unwrap();
                 let headerout = reader.read_val::<FuseOutHeader>().unwrap();
-                // let dataout = reader.read_val::<FuseReadOut>().unwrap();
+                //The requested action is to read up to size bytes of the file or directory, starting at offset. The bytes should be returned directly following the usual reply header.
+                // let dataout = reader.read_val::<Vec<u8>>().unwrap();
                 early_print!(
                     "Read response received: len = {:?}, error = {:?}\n",
                     headerout.len,
                     headerout.error
                 );
-                early_println!();
-                // early_print!("fh:{:?}\n", dataout.fh);
-                // early_print!("offset:{:?}\n", dataout.offset);
-                // early_print!("size:{:?}\n", dataout.size);
-                // early_print!("data:{:?}\n", dataout.data);
+                // early_println!();
+                // if the file is not empty
+                if headerout.len > size_of::<FuseOutHeader>() as u32 {
+                    let data_len = headerout.len - size_of::<FuseOutHeader>() as u32;
+                    let mut dataout_buf = vec![0u8; data_len as usize];
+                    let mut writer = VmWriter::from(dataout_buf.as_mut_slice());
+                    writer.write(&mut reader);
+                    let data_utf8 = String::from_utf8(dataout_buf).unwrap();
+                    early_print!("Read response received: data={:?}\n", data_utf8);
+                }
+                // early_print!("Read data: {:?}", dataout);
             }
             FuseOpcode::FuseFlush => {
                 let headerout = reader.read_val::<FuseOutHeader>().unwrap();
@@ -790,6 +861,14 @@ impl FilesystemDevice {
                 early_println!();
                 // early_print!("fh:{:?}\n", dataout.fh);
             }
+            FuseOpcode::FuseWrite => {
+                let headerout = reader.read_val::<FuseOutHeader>().unwrap();
+                early_print!("Write response received: len={:?}, error={:?}\n", headerout.len, headerout.error);
+                if headerout.len > size_of::<FuseOutHeader>() as u32 {
+                    let writeout = reader.read_val::<FuseWriteOut>().unwrap();
+                    early_print!("Write response received: size={:?}\n", writeout.size);
+                }
+            }
             _ => {}
         }
         drop(request_queue);
@@ -804,14 +883,24 @@ pub fn test_device(device: &FilesystemDevice) {
     drop(test_counter);
     let test_counter = TEST_COUNTER.read();
     match *test_counter {
-        1 => device.opendir(1, 0),
-        2 => device.readdir(1, 0, 0, 128),
-        3 => device.read(1, 0, 0, 128),
-        4 => device.release(1, 0, 0, 0, false),
-        5 => device.flush(1, 0, 0),
-        6 => device.releasedir(1, 0, 0),
-        7 => device.getattr(1, 0, 0, 0),
-        8 => device.lookup(1, Vec::from(".bashrc")),
+        // // test lookup
+        // 0 => device.lookup(1, Vec::from("testf01")),
+
+        // // test read
+        // 1 => device.lookup(1, Vec::from("testf01")),
+        // 2 => device.open(2, 0),
+        // 3 => device.read(2, 0, 0, 128),
+        // 4 => device.lookup(1, Vec::from("testf02")),
+        // 5 => device.open(3, 0),
+        // 6 => device.read(3, 1, 0, 128),
+
+        // // test write
+        // 1 => device.lookup(1, Vec::from("testf03")),
+        // 2 => device.open(2, 2),
+        // 3 => device.write(2, 0, 0, "Hello world 123".as_bytes()),
+
+        
+
         _ => (),
     };
 }
