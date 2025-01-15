@@ -968,6 +968,46 @@ impl AnyFuseDevice for FilesystemDevice {
             .add_dma_buf(&[&slice_in], &[&slice_out])
             .unwrap();
     }
+
+    fn forget(&self, nodeid: u64, nlookup: u64) {
+        let mut hiprio_queue = self.hiprio_queue[0].disable_irq().lock();
+
+        let headerin = FuseInHeader {
+            len: (size_of::<FuseForgetIn>() as u32 + size_of::<FuseInHeader>() as u32),
+            opcode: FuseOpcode::FuseForget as u32,
+            unique: 0,
+            nodeid: nodeid,
+            uid: 0,
+            gid: 0,
+            pid: 0,
+            total_extlen: 0,
+            padding: 0,
+        };
+
+        let forgetin = FuseForgetIn { nlookup: nlookup };
+
+        let headerin_bytes = headerin.as_bytes();
+        let forgetin_bytes = forgetin.as_bytes();
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        let concat_req = [headerin_bytes, forgetin_bytes, &headerout_buffer].concat();
+
+        let mut reader = VmReader::from(concat_req.as_slice());
+        let mut writer = self.request_buffers[0].writer().unwrap();
+        let len = writer.write(&mut reader);
+        let len_in = size_of::<FuseForgetIn>() + size_of::<FuseInHeader>();
+
+        self.request_buffers[0].sync(0..len).unwrap();
+        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+        hiprio_queue
+            .add_dma_buf(&[&slice_in], &[&slice_out])
+            .unwrap();
+
+        if hiprio_queue.should_notify() {
+            hiprio_queue.notify();
+        }
+    }
 }
 
 impl FilesystemDevice {
@@ -1327,6 +1367,16 @@ impl FilesystemDevice {
                 early_print!("entry_valid_nsec:{:?}\n", dataout.entry_valid_nsec);
                 early_print!("attr_valid_nsec:{:?}\n", dataout.attr_valid_nsec);
                 early_print!("attr:{:?}\n", dataout.attr);
+                early_println!();
+            }
+            FuseOpcode::FuseForget => {
+                let _datain = reader.read_val::<FuseForgetIn>().unwrap();
+                let headerout = reader.read_val::<FuseOutHeader>().unwrap();
+                early_print!(
+                    "Forget response received: len = {:?}, error = {:?}\n",
+                    headerout.len,
+                    headerout.error
+                );
                 early_println!();
             }
             _ => {}
