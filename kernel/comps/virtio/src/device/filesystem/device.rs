@@ -563,6 +563,94 @@ impl AnyFuseDevice for FilesystemDevice {
             request_queue.notify();
         }
     }
+
+    fn access(&self, nodeid: u64, mask: u32) {
+        let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+        let headerin = FuseInHeader {
+            len: (size_of::<FuseAccessIn>() as u32 + size_of::<FuseInHeader>() as u32),
+            opcode: FuseOpcode::FuseAccess as u32,
+            unique: 0,
+            nodeid: nodeid,
+            uid: 0,
+            gid: 0,
+            pid: 0,
+            total_extlen: 0,
+            padding: 0,
+        };
+
+        let accessin = FuseAccessIn {
+            mask: mask,
+            padding: 0,
+        };
+
+        let headerin_bytes = headerin.as_bytes();
+        let accessin_bytes = accessin.as_bytes();
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        let accessout_bytes = [0u8; size_of::<FuseAttrOut>()];
+        let concat_req = [
+            headerin_bytes,
+            accessin_bytes,
+            &headerout_buffer,
+            &accessout_bytes,
+        ]
+        .concat();
+
+        let mut reader = VmReader::from(concat_req.as_slice());
+        let mut writer = self.request_buffers[0].writer().unwrap();
+        let len = writer.write(&mut reader);
+        let len_in = size_of::<FuseAccessIn>() + size_of::<FuseInHeader>();
+
+        self.request_buffers[0].sync(0..len).unwrap();
+        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+        request_queue
+            .add_dma_buf(&[&slice_in], &[&slice_out])
+            .unwrap();
+
+        if request_queue.should_notify() {
+            request_queue.notify();
+        }
+    }
+
+    fn statfs(&self, nodeid: u64) {
+        let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+        let headerin = FuseInHeader {
+            len: (size_of::<FuseInHeader>() as u32),
+            opcode: FuseOpcode::FuseStatfs as u32,
+            unique: 0,
+            nodeid: nodeid,
+            uid: 0,
+            gid: 0,
+            pid: 0,
+            total_extlen: 0,
+            padding: 0,
+        };
+
+        let headerin_bytes = headerin.as_bytes();
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        let statfsout_bytes = [0u8; size_of::<FuseStatfsOut>()];
+        let concat_req = [headerin_bytes, &headerout_buffer, &statfsout_bytes].concat();
+
+        let mut reader = VmReader::from(concat_req.as_slice());
+        let mut writer = self.request_buffers[0].writer().unwrap();
+        let len = writer.write(&mut reader);
+        let len_in = size_of::<FuseInHeader>();
+
+        self.request_buffers[0].sync(0..len).unwrap();
+        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+        request_queue
+            .add_dma_buf(&[&slice_in], &[&slice_out])
+            .unwrap();
+
+        if request_queue.should_notify() {
+            request_queue.notify();
+        }
+    }
 }
 
 impl FilesystemDevice {
@@ -796,6 +884,42 @@ impl FilesystemDevice {
                 );
                 early_println!();
                 // early_print!("fh:{:?}\n", dataout.fh);
+            }
+            FuseOpcode::FuseAccess => {
+                let _datain = reader.read_val::<FuseAccessIn>().unwrap();
+                let headerout = reader.read_val::<FuseOutHeader>().unwrap();
+                let dataout = reader.read_val::<FuseAttrOut>().unwrap();
+                early_print!(
+                    "Access response received: len = {:?}, error = {:?}\n",
+                    headerout.len,
+                    headerout.error
+                );
+                early_print!("attr_valid:{:?}\n", dataout.attr_valid);
+                early_print!("attr_valid_nsec:{:?}\n", dataout.attr_valid_nsec);
+                early_print!("attr:{:?}\n", dataout.attr);
+                early_println!();
+            }
+            FuseOpcode::FuseStatfs => {
+                let _datain = reader.read_val::<FuseInHeader>().unwrap();
+                let headerout = reader.read_val::<FuseOutHeader>().unwrap();
+                let dataout = reader.read_val::<FuseStatfsOut>().unwrap();
+                early_print!(
+                    "Statfs response received: len = {:?}, error = {:?}\n",
+                    headerout.len,
+                    headerout.error
+                );
+                early_print!("blocks:{:?}\n", dataout.st.blocks);
+                early_print!("bfree:{:?}\n", dataout.st.bfree);
+                early_print!("bavail:{:?}\n", dataout.st.bavail);
+                early_print!("files:{:?}\n", dataout.st.files);
+                early_print!("ffree:{:?}\n", dataout.st.ffree);
+                early_print!("bsize:{:?}\n", dataout.st.bsize);
+                early_print!("namelen:{:?}\n", dataout.st.namelen);
+                early_print!("frsize:{:?}\n", dataout.st.frsize);
+                early_print!("padding:{:?}\n", dataout.st.padding);
+                early_print!("spare:{:?}\n", dataout.st.spare);
+
+                early_println!();
             }
             _ => {}
         }

@@ -23,6 +23,8 @@ pub trait AnyFuseDevice {
     fn getattr(&self, nodeid: u64, fh: u64, flags: u32, dummy: u32);
     fn lookup(&self, nodeid: u64, name: Vec<u8>);
     fn release(&self, nodeid: u64, fh: u64, flags: u32, lock_owner: u64, flush: bool);
+    fn access(&self, nodeid: u64, mask: u32);
+    fn statfs(&self, nodeid: u64);
     // fn interrupt(&self, nodeid: u64, fh: u64, lock_owner: u64, unique: u64);
 }
 
