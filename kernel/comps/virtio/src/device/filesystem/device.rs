@@ -507,10 +507,10 @@ impl AnyFuseDevice for FilesystemDevice {
             gid: gid,
             unused5: 0,
         };
-        
+
         let headerin_bytes = headerin.as_bytes();
         let setattrin_bytes = setattrin.as_bytes();
-        
+
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
         let setattrout_bytes = [0u8; size_of::<FuseAttrOut>()];
         let concat_req = [
@@ -518,17 +518,17 @@ impl AnyFuseDevice for FilesystemDevice {
             setattrin_bytes,
             &headerout_buffer,
             &setattrout_bytes,
-        ]
+        ];
 
         let mut reader = VmReader::from(concat_req.as_slice());
         let mut writer = self.request_buffers[0].writer().unwrap();
         let len = writer.write(&mut reader);
         let len_in = size_of::<FuseSetattrIn>() + size_of::<FuseInHeader>();
-        
+
         self.request_buffers[0].sync(0..len).unwrap();
         let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
         let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
-        
+
         request_queue
             .add_dma_buf(&[&slice_in], &[&slice_out])
             .unwrap();
