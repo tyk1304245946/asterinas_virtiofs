@@ -145,6 +145,62 @@ fn handle_recv_irq(&self) {
 - **DMA 缓冲区同步**：在发送请求之前，所有缓冲区都会与设备内存进行同步，以确保数据传输的正确性和一致性。
 - **FUSE 协议遵循**：在整个初始化过程中，我们严格遵循 FUSE 协议，确保驱动程序与设备之间的交互符合协议要求。
 
+## 设备操作
+
+### 设备操作
+
+在操作设备时，设备配置空间中的每个字段都可以由驱动程序或设备更改。
+
+每当设备触发这样的配置更改时，驱动程序会收到通知。这使得驱动程序可以缓存设备配置，避免昂贵的配置读取，除非收到通知。
+
+#### 设备配置更改通知
+
+对于设备特定的配置信息可以更改的设备，当发生设备特定的配置更改时，会发送配置更改通知。
+
+此外，当设备设置 `DEVICE_NEEDS_RESET` 时（见 2.1.2），也会触发此通知。
+
+```rust
+impl FilesystemDevice {
+    fn handle_device_config_change(&self) {
+        // 读取设备配置
+        let config = self.config_manager.read_config();
+        
+        // 处理配置更改逻辑
+        debug!("Device configuration changed: {:?}", config);
+        
+        // 如果需要重置设备
+        if config.device_needs_reset() {
+            self.reset_device();
+        }
+    }
+
+    fn reset_device(&self) {
+        // 执行设备重置逻辑
+        debug!("Resetting device...");
+        // 具体的重置操作
+    }
+}
+```
+
+在`test_device`函数中，我们可以摩西设备配置更改通知的处理：
+```rust
+// filepath: /home/robin/asterinas_virtofs/kernel/comps/virtio/src/device/filesystem/device.rs
+pub fn test_device(device: &FilesystemDevice) {
+    let mut test_counter = TEST_COUNTER.write();
+    *test_counter += 1;
+    drop(test_counter);
+    let test_counter = TEST_COUNTER.read();
+    match *test_counter {
+        1 => {
+            // 模拟设备配置更改通知
+            device.handle_device_config_change();
+        }
+        _ => {}
+    };
+}
+```
+通过上述实现，我们确保了在设备配置更改时，驱动程序能够正确处理通知，并根据需要执行相应的操作。
+
 ## FUSE接口设计
 
 ### FUSE_INIT
