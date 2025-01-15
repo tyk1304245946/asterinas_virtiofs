@@ -182,7 +182,7 @@ impl FilesystemDevice {
 }
 ```
 
-在`test_device`函数中，我们可以摩西设备配置更改通知的处理：
+在`test_device`函数中，我们可以模拟设备配置更改通知的处理：
 ```rust
 // filepath: /home/robin/asterinas_virtofs/kernel/comps/virtio/src/device/filesystem/device.rs
 pub fn test_device(device: &FilesystemDevice) {
@@ -200,6 +200,154 @@ pub fn test_device(device: &FilesystemDevice) {
 }
 ```
 通过上述实现，我们确保了在设备配置更改时，驱动程序能够正确处理通知，并根据需要执行相应的操作。
+
+## 设备基础功能实现
+
+### lookup
+
+lookup的测试代码如下：
+```rust
+test lookup
+
+1 => device.lookup(1, Vec::from("testf01"))
+```
+lookup的测试结果如下：
+![lookup](lookup.png)
+
+###  opendir and readdir
+
+opendir and readdir的测试代码如下：
+```rust
+test opendir and readdir
+1 => device.lookup(1, Vec::from("testdir")),
+2 => device.opendir(2, 0),
+3 => device.readdir(2, 0, 0, 256),
+```
+opendir and readdir的测试结果如下：
+![opendir and readdir](openread.png)
+
+### open
+
+open的测试代码如下：
+```rust
+ test open:
+
+1 => device.lookup(1, Vec::from("testf01")),
+2 => device.open(2, 0),
+```
+open的测试结果如下：
+![open](open.png)
+
+### read
+
+read的测试代码如下：
+```rust
+ test read:
+
+1=> device.lookup(1, Vec::from("testf02")),
+2 => device.open(3, 0),
+3 => device.read(3, 1, 0, 128),
+```
+read的测试结果如下：
+![read](read.png)
+
+### write
+
+write的测试代码如下：
+```rust
+test write:
+
+1 => device.lookup(1, Vec::from("testf_write")),
+2 => device.open(2, 2),
+3 => device.write(2, 0, 0, "Test write file".as_bytes()),
+```
+write的测试结果如下：
+![write](write1.png)
+![write](write2.png)
+
+### flush
+
+flush的测试代码如下：
+```rust
+test flush:
+
+1 => device.lookup(1, "testf01".as_bytes().to_vec()),
+2 => device.open(2, 0),
+3 => device.flush(2, 0, 0),
+```
+flush的测试结果如下：
+![flush](flush.png)
+
+### releasedir
+
+releasedir的测试代码如下：
+```rust
+test releasedir:
+
+1 => device.lookup(1, "testdir".as_bytes().to_vec()),
+2 => device.opendir(2, 0),
+3 => device.readdir(2, 0, 0, 256),
+4 => device.releasedir(2, 0, 0),
+5 => device.readdir(2, 0, 0, 256),
+```
+releasedir的测试结果如下：
+![releasedir](releasedir.png)
+
+### getattr
+
+getattr的测试代码如下：
+```rust
+test getattr
+1 => device.lookup(1, "testdir".as_bytes().to_vec()),
+2 => device.getattr(2, 0, 0, 0),
+```
+getattr的测试结果如下：
+![getattr](getattr.png)
+
+### release
+
+release的测试代码如下：
+```rust
+test release
+1 => device.lookup(1, "testf01".as_bytes().to_vec()),
+2 => device.open(2, 0),
+3 => device.read(2, 0, 0, 128),
+4 => device.release(2, 0, 0, 0, true),
+5 => device.read(2, 0, 0, 128),
+```
+release的测试结果如下：
+![release](release.png)
+
+### statfs
+
+statfs的测试代码如下：
+```rust
+test statfs
+1 => device.statfs(1),
+```
+statfs的测试结果如下：
+![statfs](statfs.png)
+
+### mkdir
+
+mkdir的测试代码如下：
+```rust
+test mkdir
+1 => device.mkdir(1, 0o755, 0o777, "test_mkdir".as_bytes().to_vec()),
+
+```
+mkdir的测试结果如下：
+![mkdir](mkdir.png)
+
+### destroy
+
+destroy的测试代码如下：
+```rust
+test destroy:
+1 => device.destroy(),
+```
+destroy的测试结果如下：
+![destroy](destroy.png)
 
 ## FUSE接口设计
 
