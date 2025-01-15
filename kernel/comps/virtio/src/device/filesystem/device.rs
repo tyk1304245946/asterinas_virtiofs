@@ -655,7 +655,7 @@ impl AnyFuseDevice for FilesystemDevice {
     }
 
     fn interrupt(&self, nodeid: u64, unique: u64) {
-        let mut request_queue = self.request_queues[0].disable_irq().lock();
+        let mut hiprio_queue = self.hiprio_queue[0].disable_irq().lock();
 
         let headerin = FuseInHeader {
             len: (size_of::<FuseInterruptIn>() as u32 + size_of::<FuseInHeader>() as u32),
@@ -685,12 +685,12 @@ impl AnyFuseDevice for FilesystemDevice {
         let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
         let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
 
-        request_queue
+        hiprio_queue
             .add_dma_buf(&[&slice_in], &[&slice_out])
             .unwrap();
 
-        if request_queue.should_notify() {
-            request_queue.notify();
+        if hiprio_queue.should_notify() {
+            hiprio_queue.notify();
         }
     }
 
