@@ -997,7 +997,7 @@ impl AnyFuseDevice for FilesystemDevice {
             flags: 0,
             padding: 0,
         };
-        
+
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
         let writeout_buffer = [0u8; size_of::<FuseWriteOut>()];
 
@@ -1029,8 +1029,6 @@ impl AnyFuseDevice for FilesystemDevice {
         if request_queue.should_notify() {
             request_queue.notify();
         }
-
-
     }
 
     fn forget(&self, nodeid: u64, nlookup: u64) {
@@ -1116,6 +1114,61 @@ impl AnyFuseDevice for FilesystemDevice {
 
         if hiprio_queue.should_notify() {
             hiprio_queue.notify();
+        }
+    }
+    fn link(&self, nodeid: u64, oldnodeid: u64, name: Vec<u8>) {
+        let mut request_queue = self.request_queues[0].disable_irq().lock();
+
+        let prepared_name = fuse_pad_str(&String::from_utf8(name).unwrap(), true);
+
+        let headerin = FuseInHeader {
+            len: (size_of::<FuseLinkIn>() as u32
+                + prepared_name.len() as u32
+                + size_of::<FuseInHeader>() as u32),
+            opcode: FuseOpcode::FuseLink as u32,
+            unique: 0,
+            nodeid: nodeid,
+            uid: 0,
+            gid: 0,
+            pid: 0,
+            total_extlen: 0,
+            padding: 0,
+        };
+
+        let linkin = FuseLinkIn {
+            oldnodeid: oldnodeid,
+        };
+
+        let headerin_bytes = headerin.as_bytes();
+        let linkin_bytes = linkin.as_bytes();
+        let prepared_name_bytes = prepared_name.as_slice();
+
+        let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
+        let linkout_bytes = [0u8; size_of::<FuseEntryOut>()];
+        let concat_req = [
+            headerin_bytes,
+            linkin_bytes,
+            prepared_name_bytes,
+            &headerout_buffer,
+            &linkout_bytes,
+        ]
+        .concat();
+
+        let mut reader = VmReader::from(concat_req.as_slice());
+        let mut writer = self.request_buffers[0].writer().unwrap();
+        let len = writer.write(&mut reader);
+        let len_in = prepared_name.len() + size_of::<FuseLinkIn>() + size_of::<FuseInHeader>();
+
+        self.request_buffers[0].sync(0..len).unwrap();
+        let slice_in = DmaStreamSlice::new(&self.request_buffers[0], 0, len_in);
+        let slice_out = DmaStreamSlice::new(&self.request_buffers[0], len_in, len);
+
+        request_queue
+            .add_dma_buf(&[&slice_in], &[&slice_out])
+            .unwrap();
+
+        if request_queue.should_notify() {
+            request_queue.notify();
         }
     }
 }
@@ -1361,7 +1414,11 @@ impl FilesystemDevice {
             }
             FuseOpcode::FuseWrite => {
                 let headerout = reader.read_val::<FuseOutHeader>().unwrap();
-                early_print!("Write response received: len={:?}, error={:?}\n", headerout.len, headerout.error);
+                early_print!(
+                    "Write response received: len={:?}, error={:?}\n",
+                    headerout.len,
+                    headerout.error
+                );
                 if headerout.len > size_of::<FuseOutHeader>() as u32 {
                     let writeout = reader.read_val::<FuseWriteOut>().unwrap();
                     early_print!("Write response received: size={:?}\n", writeout.size);
@@ -1514,6 +1571,24 @@ impl FilesystemDevice {
                 );
                 early_println!();
             }
+            FuseOpcode::FuseLink => {
+                let _datain = reader.read_val::<FuseLinkIn>().unwrap();
+                let headerout = reader.read_val::<FuseOutHeader>().unwrap();
+                let dataout = reader.read_val::<FuseEntryOut>().unwrap();
+                early_print!(
+                    "Link response received: len = {:?}, error = {:?}\n",
+                    headerout.len,
+                    headerout.error
+                );
+                early_print!("nodeid:{:?}\n", dataout.nodeid);
+                early_print!("generation:{:?}\n", dataout.generation);
+                early_print!("entry_valid:{:?}\n", dataout.entry_valid);
+                early_print!("attr_valid:{:?}\n", dataout.attr_valid);
+                early_print!("entry_valid_nsec:{:?}\n", dataout.entry_valid_nsec);
+                early_print!("attr_valid_nsec:{:?}\n", dataout.attr_valid_nsec);
+                early_print!("attr:{:?}\n", dataout.attr);
+                early_println!();
+            }
             _ => {}
         }
         drop(request_queue);
@@ -1543,8 +1618,6 @@ pub fn test_device(device: &FilesystemDevice) {
         // 1 => device.lookup(1, Vec::from("testf03")),
         // 2 => device.open(2, 2),
         // 3 => device.write(2, 0, 0, "Hello world 123".as_bytes()),
-
-        
 
         // // test mkdir
         // 1 => device.lookup(1, "testdir".as_bytes().to_vec()),
