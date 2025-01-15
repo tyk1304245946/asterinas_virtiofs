@@ -929,13 +929,17 @@ impl AnyFuseDevice for FilesystemDevice {
     fn rename(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>) {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
 
-        let prepared_name = fuse_pad_str(&String::from_utf8(name).unwrap(), true);
-        let prepared_newname = fuse_pad_str(&String::from_utf8(newname).unwrap(), true);
+        let names = format!(
+            "{}" + "\0" + "{}",
+            String::from_utf8(name).unwrap(),
+            String::from_utf8(newname).unwrap()
+        );
+
+        let prepared_names = fuse_pad_str(&names, true);
 
         let headerin = FuseInHeader {
             len: (size_of::<FuseRenameIn>() as u32
-                + prepared_name.len() as u32
-                + prepared_newname.len() as u32
+                + prepared_names.len() as u32
                 + size_of::<FuseInHeader>() as u32),
             opcode: FuseOpcode::FuseRename as u32,
             unique: 0,
@@ -951,16 +955,14 @@ impl AnyFuseDevice for FilesystemDevice {
 
         let headerin_bytes = headerin.as_bytes();
         let renamein_bytes = renamein.as_bytes();
-        let prepared_name_bytes = prepared_name.as_slice();
-        let prepared_newname_bytes = prepared_newname.as_slice();
+        let prepared_names_bytes = prepared_names.as_slice();
 
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
         let renameout_bytes = [0u8; size_of::<FuseEntryOut>()];
         let concat_req = [
             headerin_bytes,
             renamein_bytes,
-            prepared_name_bytes,
-            prepared_newname_bytes,
+            prepared_names_bytes,
             &headerout_buffer,
             &renameout_bytes,
         ]
@@ -990,13 +992,17 @@ impl AnyFuseDevice for FilesystemDevice {
     fn rename2(&self, nodeid: u64, name: Vec<u8>, newdir: u64, newname: Vec<u8>, flags: u32) {
         let mut request_queue = self.request_queues[0].disable_irq().lock();
 
-        let prepared_name = fuse_pad_str(&String::from_utf8(name).unwrap(), true);
-        let prepared_newname = fuse_pad_str(&String::from_utf8(newname).unwrap(), true);
+        let names = format!(
+            "{}" + "\0" + "{}",
+            String::from_utf8(name).unwrap(),
+            String::from_utf8(newname).unwrap()
+        );
+
+        let prepared_names = fuse_pad_str(&names, true);
 
         let headerin = FuseInHeader {
             len: (size_of::<FuseRename2In>() as u32
-                + prepared_name.len() as u32
-                + prepared_newname.len() as u32
+                + prepared_names.len() as u32
                 + size_of::<FuseInHeader>() as u32),
             opcode: FuseOpcode::FuseRename2 as u32,
             unique: 0,
@@ -1016,16 +1022,14 @@ impl AnyFuseDevice for FilesystemDevice {
 
         let headerin_bytes = headerin.as_bytes();
         let rename2in_bytes = rename2in.as_bytes();
-        let prepared_name_bytes = prepared_name.as_slice();
-        let prepared_newname_bytes = prepared_newname.as_slice();
+        let prepared_names_bytes = prepared_names.as_slice();
 
         let headerout_buffer = [0u8; size_of::<FuseOutHeader>()];
         let rename2out_bytes = [0u8; size_of::<FuseEntryOut>()];
         let concat_req = [
             headerin_bytes,
             rename2in_bytes,
-            prepared_name_bytes,
-            prepared_newname_bytes,
+            prepared_names_bytes,
             &headerout_buffer,
             &rename2out_bytes,
         ]
